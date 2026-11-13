@@ -228,6 +228,13 @@ function extractText(html: string): string {
         if (titles.length > 0) {
             return titles.join('\n');
         }
+        // Fallback: any element with class cardLine1
+        const fallback = Array.from(doc.querySelectorAll('.cardLine1'))
+            .map(el => (el.textContent || '').trim())
+            .filter(t => t);
+        if (fallback.length > 0) {
+            return fallback.join('\n');
+        }
         return '';
     } catch (e) {
         const m = html.match(/<p[^>]*class="[^"]*\bsb\b[^"]*"[^>]*>([\s\S]*?)<\/p>/);

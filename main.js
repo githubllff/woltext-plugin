@@ -696,6 +696,10 @@ function extractText(html) {
     if (titles.length > 0) {
       return titles.join("\n");
     }
+    const fallback = Array.from(doc.querySelectorAll(".cardLine1")).map((el) => (el.textContent || "").trim()).filter((t) => t);
+    if (fallback.length > 0) {
+      return fallback.join("\n");
+    }
     return "";
   } catch (e) {
     const m = html.match(/<p[^>]*class="[^"]*\bsb\b[^"]*"[^>]*>([\s\S]*?)<\/p>/);

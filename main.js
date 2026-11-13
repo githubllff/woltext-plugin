@@ -551,7 +551,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
         items.push({ cit: normCit, query, url });
       }
     }
-    const scriptureRunRe = /\b(\d{1,2}\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\.?)\s+(\d{1,3}:\d{1,3}(?:-\d{1,3})?(?:\s*[;,]\s*\d{1,3}(?::\d{1,3})?(?:-\d{1,3})?)*)/g;
+    const scriptureRunRe = /\b(?!(?:Read|See|Compare|And|But|Or|For|The|In|On|At|To|Of|A|An)\b)(\d{1,2}\s*)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\.?)\s+(\d{1,3}:\d{1,3}(?:-\d{1,3})?(?:\s*[;,]\s*\d{1,3}(?::\d{1,3})?(?:-\d{1,3})?)*)/g;
     let m;
     while ((m = scriptureRunRe.exec(cleanText)) !== null) {
       const book = ((m[1] || "") + m[2]).trim();

@@ -512,6 +512,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
+    new import_obsidian.Notice("WOL Text Inserter v0.2.0 loaded");
   }
   onunload() {
     resetEngine();

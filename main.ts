@@ -26,6 +26,7 @@ export default class WolTextPlugin extends Plugin {
         if (!isEngineReady()) {
             console.warn('WOL Text Inserter: engine not ready');
         }
+        new Notice('WOL Text Inserter v0.2.0 loaded');
     }
 
     onunload() {

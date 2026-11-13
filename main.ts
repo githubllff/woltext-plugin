@@ -222,7 +222,7 @@ function extractText(html: string): string {
         }
         // Multi-article lookup pages (e.g. Insight page ranges) return a list of
         // article titles instead of inline text.
-        const titles = Array.from(doc.querySelectorAll('li.linkCard .cardLine1'))
+        const titles = Array.from(doc.querySelectorAll('li.linkCard .cardLine1, li.navCard .cardLine1, li.row.navCard .cardLine1'))
             .map(el => (el.textContent || '').trim())
             .filter(t => t);
         if (titles.length > 0) {

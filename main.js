@@ -692,7 +692,7 @@ function extractText(html) {
     if (any.length > 0) {
       return any.map((p) => (p.textContent || "").replace(/\s+/g, " ").trim()).filter((t) => t).join("\n");
     }
-    const titles = Array.from(doc.querySelectorAll("li.linkCard .cardLine1")).map((el) => (el.textContent || "").trim()).filter((t) => t);
+    const titles = Array.from(doc.querySelectorAll("li.linkCard .cardLine1, li.navCard .cardLine1, li.row.navCard .cardLine1")).map((el) => (el.textContent || "").trim()).filter((t) => t);
     if (titles.length > 0) {
       return titles.join("\n");
     }

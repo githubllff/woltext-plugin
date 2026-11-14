@@ -37,7 +37,6 @@ export default class WolTextPlugin extends Plugin {
         if (!isEngineReady()) {
             console.warn('WOL Text Inserter: engine not ready');
         }
-        new Notice('WOL Text Inserter v0.4.0 loaded');
     }
 
     onunload() {
@@ -75,50 +74,8 @@ export default class WolTextPlugin extends Plugin {
 
         const items: Item[] = [];
 
-        const pubCits = findCitations(cleanText);
-        if (pubCits) {
-            for (const cit of pubCits) {
-                const origStart = cleanToOrig[cit.start];
-                const origEnd = cleanToOrig[cit.end - 1] + 1;
-                const cleanCit = { ...cit, text: cit.text.replace(/_/g, '') } as Citation;
-                const { query, fullRef } = this.buildPubQuery(cleanText, cleanCit);
-                const url = buildWolUrl(query);
-                const cleanFullRef = fullRef.replace(/_/g, '');
-                const normCit = { text: cleanFullRef, start: origStart, end: origStart + cleanFullRef.length };
-                items.push({ cit: normCit, query, url });
-
-                // Publication shorthand runs: "w25.02 3 ¶7; 7 ¶18" — the first
-                // is captured by inrefens, subsequent ones inherit the root.
-                const root = cleanCit.text.replace(/\s+\d.*$/, '').trim();
-                const tail = cleanText.slice(cit.end);
-                const shortRe = /^\s*[;,]\s*(\d+)\s*(?:[^\w\s]+|par\.?|p\.?)\s*(\d+)/;
-                let scan = tail;
-                let offset = cit.end;
-                while (true) {
-                    const mm = scan.match(shortRe);
-                    if (!mm) break;
-                    const page = mm[1];
-                    const para = mm[2];
-                    const fullMatch = mm[0];
-                    const shStart = offset + (scan.indexOf(fullMatch));
-                    const shEnd = shStart + fullMatch.trim().length;
-                    // advance past leading whitespace
-                    const trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
-                    const trimmedEnd = trimmedStart + fullMatch.trim().length;
-                    const origShStart = cleanToOrig[trimmedStart];
-                    const origShEnd = cleanToOrig[trimmedEnd - 1] + 1;
-                    if (!items.some(it => origShStart < it.cit.end && origShEnd > it.cit.start)) {
-                        const q = `${root} ${page} ${para}`;
-                        const u = buildWolUrl(q);
-                        const display = cleanText.slice(trimmedStart, trimmedEnd).replace(/_/g, '').trim();
-                        items.push({ cit: { text: display, start: origShStart, end: origShStart + display.length }, query: q, url: u });
-                    }
-                    offset = trimmedEnd;
-                    scan = cleanText.slice(offset);
-                }
-            }
-        }
-
+        // 1. Scripture detection FIRST (so "Pr 3:27" isn't consumed by inrefens
+        //    treating "Pr" as a publication root).
         const scriptureRunRe = /\b(?!(?:Read|See|Compare|And|But|Or|For|The|In|On|At|To|Of|A|An)\b)(\d{1,2}\s*)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\.?)\s+(\d{1,3}:\d{1,3}(?:-\d{1,3})?(?:\s*[;,]\s*\d{1,3}(?![A-Za-z])(?::\d{1,3})?(?:-\d{1,3})?)*)/g;
         let m: RegExpExecArray | null;
         while ((m = scriptureRunRe.exec(cleanText)) !== null) {
@@ -154,8 +111,51 @@ export default class WolTextPlugin extends Plugin {
             }
         }
 
-        // Insight title references (e.g. it "Peace" pilcrow 3) and Meeting Workbook articles (e.g. ijwbv article 50)
-        const titleRefRe = new RegExp('\\bit(-[12])?\\s+[\\""\u201C\u201D«»]?([A-Za-z][A-Za-z\\s\'-]+?)[\\""\u201C\u201D«»]?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+)', 'g');
+        // 2. inrefens publications (skip overlapping scripture matches)
+        const pubCits = findCitations(cleanText);
+        if (pubCits) {
+            for (const cit of pubCits) {
+                const origStart = cleanToOrig[cit.start];
+                const origEnd = cleanToOrig[cit.end - 1] + 1;
+                if (items.some(it => origStart < it.cit.end && origEnd > it.cit.start)) continue;
+                const cleanCit = { ...cit, text: cit.text.replace(/_/g, '') } as Citation;
+                const { query, fullRef } = this.buildPubQuery(cleanText, cleanCit);
+                const url = buildWolUrl(query);
+                const cleanFullRef = fullRef.replace(/_/g, '');
+                const normCit = { text: cleanFullRef, start: origStart, end: origStart + cleanFullRef.length };
+                items.push({ cit: normCit, query, url });
+
+                // Publication shorthand runs: "w25.02 3 ¶7; 7 ¶18"
+                const root = cleanCit.text.replace(/\s+\d.*$/, '').trim();
+                const tail = cleanText.slice(cit.end);
+                const shortRe = /^\s*[;,]\s*(\d+)\s*(?:[^\w\s]+|par\.?|p\.?)\s*(\d+)/;
+                let scan = tail;
+                let offset = cit.end;
+                while (true) {
+                    const mm = scan.match(shortRe);
+                    if (!mm) break;
+                    const page = mm[1];
+                    const para = mm[2];
+                    const fullMatch = mm[0];
+                    const shStart = offset + (scan.indexOf(fullMatch));
+                    const trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
+                    const trimmedEnd = trimmedStart + fullMatch.trim().length;
+                    const origShStart = cleanToOrig[trimmedStart];
+                    const origShEnd = cleanToOrig[trimmedEnd - 1] + 1;
+                    if (!items.some(it => origShStart < it.cit.end && origShEnd > it.cit.start)) {
+                        const q = `${root} ${page} ${para}`;
+                        const u = buildWolUrl(q);
+                        const display = cleanText.slice(trimmedStart, trimmedEnd).replace(/_/g, '').trim();
+                        items.push({ cit: { text: display, start: origShStart, end: origShStart + display.length }, query: q, url: u });
+                    }
+                    offset = trimmedEnd;
+                    scan = cleanText.slice(offset);
+                }
+            }
+        }
+
+        // 3. Insight title references (e.g. it "Peace" ¶3) and Meeting Workbook articles (e.g. ijwbv article 50)
+        const titleRefRe = new RegExp('\\bit(-[12])?\\s+[""\u201C\u201D«»]?([A-Za-z][A-Za-z\\s\'-]+?)[""\u201C\u201D«»]?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+)', 'g');
         while ((m = titleRefRe.exec(cleanText)) !== null) {
             const vol = m[1] || '-2';
             const title = m[2].trim();
@@ -288,7 +288,8 @@ export default class WolTextPlugin extends Plugin {
             const fullRef = (cit.text + fullTail).trim();
             return { query: `${cit.text} ${pStart}-${pEnd}`, fullRef };
         }
-        const singleMatch = tail.match(/^\s*par\.?\s*(\d+)/i);
+        // single paragraph: par. 4 or ¶4
+        const singleMatch = tail.match(/^\s*(?:par\.?|¶)\s*(\d+)/i);
         if (singleMatch) {
             const para = singleMatch[1];
             const fullTail = singleMatch[0];

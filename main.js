@@ -520,7 +520,6 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
-    new import_obsidian.Notice("WOL Text Inserter v0.4.0 loaded");
   }
   onunload() {
     resetEngine();
@@ -552,46 +551,6 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     }
     const cleanText = original.replace(/_/g, "");
     const items = [];
-    const pubCits = findCitations(cleanText);
-    if (pubCits) {
-      for (const cit of pubCits) {
-        const origStart = cleanToOrig[cit.start];
-        const origEnd = cleanToOrig[cit.end - 1] + 1;
-        const cleanCit = { ...cit, text: cit.text.replace(/_/g, "") };
-        const { query, fullRef } = this.buildPubQuery(cleanText, cleanCit);
-        const url = buildWolUrl(query);
-        const cleanFullRef = fullRef.replace(/_/g, "");
-        const normCit = { text: cleanFullRef, start: origStart, end: origStart + cleanFullRef.length };
-        items.push({ cit: normCit, query, url });
-        const root = cleanCit.text.replace(/\s+\d.*$/, "").trim();
-        const tail = cleanText.slice(cit.end);
-        const shortRe = /^\s*[;,]\s*(\d+)\s*(?:[^\w\s]+|par\.?|p\.?)\s*(\d+)/;
-        let scan = tail;
-        let offset = cit.end;
-        while (true) {
-          const mm = scan.match(shortRe);
-          if (!mm)
-            break;
-          const page = mm[1];
-          const para = mm[2];
-          const fullMatch = mm[0];
-          const shStart = offset + scan.indexOf(fullMatch);
-          const shEnd = shStart + fullMatch.trim().length;
-          const trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
-          const trimmedEnd = trimmedStart + fullMatch.trim().length;
-          const origShStart = cleanToOrig[trimmedStart];
-          const origShEnd = cleanToOrig[trimmedEnd - 1] + 1;
-          if (!items.some((it) => origShStart < it.cit.end && origShEnd > it.cit.start)) {
-            const q = `${root} ${page} ${para}`;
-            const u = buildWolUrl(q);
-            const display = cleanText.slice(trimmedStart, trimmedEnd).replace(/_/g, "").trim();
-            items.push({ cit: { text: display, start: origShStart, end: origShStart + display.length }, query: q, url: u });
-          }
-          offset = trimmedEnd;
-          scan = cleanText.slice(offset);
-        }
-      }
-    }
     const scriptureRunRe = /\b(?!(?:Read|See|Compare|And|But|Or|For|The|In|On|At|To|Of|A|An)\b)(\d{1,2}\s*)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\.?)\s+(\d{1,3}:\d{1,3}(?:-\d{1,3})?(?:\s*[;,]\s*\d{1,3}(?![A-Za-z])(?::\d{1,3})?(?:-\d{1,3})?)*)/g;
     let m;
     while ((m = scriptureRunRe.exec(cleanText)) !== null) {
@@ -629,7 +588,48 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
         searchFrom = idx + rawVt.trim().length;
       }
     }
-    const titleRefRe = new RegExp(`\\bit(-[12])?\\s+[\\""\u201C\u201D\xAB\xBB]?([A-Za-z][A-Za-z\\s'-]+?)[\\""\u201C\u201D\xAB\xBB]?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+)`, "g");
+    const pubCits = findCitations(cleanText);
+    if (pubCits) {
+      for (const cit of pubCits) {
+        const origStart = cleanToOrig[cit.start];
+        const origEnd = cleanToOrig[cit.end - 1] + 1;
+        if (items.some((it) => origStart < it.cit.end && origEnd > it.cit.start))
+          continue;
+        const cleanCit = { ...cit, text: cit.text.replace(/_/g, "") };
+        const { query, fullRef } = this.buildPubQuery(cleanText, cleanCit);
+        const url = buildWolUrl(query);
+        const cleanFullRef = fullRef.replace(/_/g, "");
+        const normCit = { text: cleanFullRef, start: origStart, end: origStart + cleanFullRef.length };
+        items.push({ cit: normCit, query, url });
+        const root = cleanCit.text.replace(/\s+\d.*$/, "").trim();
+        const tail = cleanText.slice(cit.end);
+        const shortRe = /^\s*[;,]\s*(\d+)\s*(?:[^\w\s]+|par\.?|p\.?)\s*(\d+)/;
+        let scan = tail;
+        let offset = cit.end;
+        while (true) {
+          const mm = scan.match(shortRe);
+          if (!mm)
+            break;
+          const page = mm[1];
+          const para = mm[2];
+          const fullMatch = mm[0];
+          const shStart = offset + scan.indexOf(fullMatch);
+          const trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
+          const trimmedEnd = trimmedStart + fullMatch.trim().length;
+          const origShStart = cleanToOrig[trimmedStart];
+          const origShEnd = cleanToOrig[trimmedEnd - 1] + 1;
+          if (!items.some((it) => origShStart < it.cit.end && origShEnd > it.cit.start)) {
+            const q = `${root} ${page} ${para}`;
+            const u = buildWolUrl(q);
+            const display = cleanText.slice(trimmedStart, trimmedEnd).replace(/_/g, "").trim();
+            items.push({ cit: { text: display, start: origShStart, end: origShStart + display.length }, query: q, url: u });
+          }
+          offset = trimmedEnd;
+          scan = cleanText.slice(offset);
+        }
+      }
+    }
+    const titleRefRe = new RegExp(`\\bit(-[12])?\\s+[""\u201C\u201D\xAB\xBB]?([A-Za-z][A-Za-z\\s'-]+?)[""\u201C\u201D\xAB\xBB]?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+)`, "g");
     while ((m = titleRefRe.exec(cleanText)) !== null) {
       const vol = m[1] || "-2";
       const title = m[2].trim();
@@ -761,7 +761,7 @@ ${bodyLines.join("\n")}`);
       const fullRef = (cit.text + fullTail).trim();
       return { query: `${cit.text} ${pStart}-${pEnd}`, fullRef };
     }
-    const singleMatch = tail.match(/^\s*par\.?\s*(\d+)/i);
+    const singleMatch = tail.match(/^\s*(?:par\.?|¶)\s*(\d+)/i);
     if (singleMatch) {
       const para = singleMatch[1];
       const fullTail = singleMatch[0];

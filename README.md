@@ -10,15 +10,16 @@ An Obsidian plugin that finds scripture and publication citations in a note, fet
 - **Underscore-wrapped references** (e.g. `[_w01_ 8/1 15-16 pars. 13-16]`) are handled.
 - **Verse sequences** with spaces after commas are normalized for lookup (`Galatians 5:22, 23` → `Galatians 5:22,23`).
 - **Hyperlinks unwrapped** — scripture/publication cross-references are kept as plain text; footnote markers removed.
-- **Clickable publication links** — publication references in the note become clickable WOL search links, while scriptures are left untouched (so your jwlibrary plugin can handle them). Toggle with **Link publication references** in the plugin settings.
-- **Safe re-runs** — running the command again keeps existing links intact and still inserts the text for every citation.
+- **Clickable publication links, always on** — publication references are shown as clickable WOL search links live in the editor and in reading view (no command needed), while scriptures are left untouched for your jwlibrary plugin. Toggle with **Clickable publication links** in the plugin settings.
+- **Command inserts text only** — running **Insert WOL text for citations in note** adds the reference text under each citation and leaves the source line as you wrote it.
 - **Output format** — inserted text can be a blockquote, a tab-indented block, or a collapsible callout (choose in settings; default blockquote).
 
 ## Usage
 
 1. Install the plugin (copy `main.js`, `manifest.json`, `styles.css` into `.obsidian/plugins/woltext-plugin/`).
 2. Enable **WOL Text Inserter** in Settings → Community plugins.
-3. Open a note and run the command **"Insert WOL text for citations in note"**.
+3. Publication references become clickable WOL links automatically in the editor and reading view.
+4. Run the command **"Insert WOL text for citations in note"** to insert the reference text under each citation.
 
 ## Build
 

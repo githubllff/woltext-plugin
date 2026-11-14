@@ -493,6 +493,631 @@ function buildWolUrl(query) {
   }
 }
 
+// citations.ts
+function detectCitations(original) {
+  const cleanChars = [];
+  const cleanToOrig = [];
+  const pushChar = (idx) => {
+    if (original[idx] === "_")
+      return;
+    cleanChars.push(original[idx]);
+    cleanToOrig.push(idx);
+  };
+  let ci = 0;
+  while (ci < original.length) {
+    if (original[ci] === "[") {
+      const close = original.indexOf("]", ci);
+      if (close !== -1 && original[close + 1] === "(") {
+        const end = original.indexOf(")", close + 2);
+        if (end !== -1) {
+          for (let k = ci + 1; k < close; k++)
+            pushChar(k);
+          ci = end + 1;
+          continue;
+        }
+      }
+    }
+    pushChar(ci);
+    ci++;
+  }
+  const cleanText = cleanChars.join("");
+  const linkUrlRanges = [];
+  const linkUrlRe = /\]\(([^)]*)\)/g;
+  let lm;
+  while ((lm = linkUrlRe.exec(original)) !== null) {
+    const start = lm.index + 2;
+    linkUrlRanges.push({ start, end: start + lm[1].length });
+  }
+  const items = [];
+  const skipped = [];
+  const scriptureRunRe = /\b(?!(?:Read|See|Compare|And|But|Or|For|The|In|On|At|To|Of|A|An)\b)(\d{1,2}\s*)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\.?)\s+(\d{1,3}:\d{1,3}(?:-\d{1,3})?(?:\s*[;,]\s*\d{1,3}(?![A-Za-z])(?::\d{1,3})?(?:-\d{1,3})?)*)/g;
+  let m;
+  while ((m = scriptureRunRe.exec(cleanText)) !== null) {
+    const book = ((m[1] || "") + m[2]).trim();
+    const versesStr = m[3];
+    const verseTokens = versesStr.split(/\s*;\s*/);
+    let searchFrom = 0;
+    let lastChapter = "";
+    for (const rawVt of verseTokens) {
+      const vt = rawVt.trim();
+      if (!vt)
+        continue;
+      let token = vt;
+      if (/^\d+$/.test(token) && lastChapter) {
+        token = `${lastChapter}:${token}`;
+      }
+      const chapMatch = token.match(/^(\d+):/);
+      if (chapMatch)
+        lastChapter = chapMatch[1];
+      const idx = m[0].indexOf(rawVt.trim(), searchFrom);
+      if (idx === -1)
+        continue;
+      const cleanStart = m.index + idx;
+      const cleanEnd = cleanStart + rawVt.trim().length;
+      const origStart = searchFrom === 0 ? cleanToOrig[m.index] : cleanToOrig[cleanStart];
+      const origEnd = cleanToOrig[cleanEnd - 1] + 1;
+      if (items.some((it) => origStart < it.cit.end && origEnd > it.cit.start)) {
+        searchFrom = idx + rawVt.trim().length;
+        continue;
+      }
+      const fullRef = `${book} ${token}`.replace(/_/g, "");
+      const query = fullRef.replace(/,\s+/g, ",");
+      const url = `https://wol.jw.org/en/wol/l/r1/lp-e?q=${encodeURIComponent(query)}`;
+      items.push({ cit: { text: fullRef, start: origStart, end: origEnd }, query, url, isPub: false });
+      searchFrom = idx + rawVt.trim().length;
+    }
+  }
+  const pubCits = findCitations(cleanText);
+  if (pubCits) {
+    for (const cit of pubCits) {
+      const origStart = cleanToOrig[cit.start];
+      const origEnd = cleanToOrig[cit.end - 1] + 1;
+      if (items.some((it) => origStart < it.cit.end && origEnd > it.cit.start)) {
+        skipped.push(`publication ${cit.text} (overlapped a scripture match)`);
+        continue;
+      }
+      const cleanCit = { ...cit, text: cit.text.replace(/_/g, "") };
+      const { query, fullRef } = buildPubQuery(cleanText, cleanCit);
+      const url = buildWolUrl(query);
+      const cleanFullRef = fullRef.replace(/_/g, "");
+      const cleanFullEnd = Math.min(cit.start + fullRef.length, cleanText.length);
+      const origFullEnd = cleanFullEnd > 0 ? cleanToOrig[cleanFullEnd - 1] + 1 : origEnd;
+      const normCit = { text: cleanFullRef, start: origStart, end: origFullEnd };
+      items.push({ cit: normCit, query, url, isPub: true });
+      const root = cleanCit.text.replace(/\s+\d.*$/, "").trim();
+      const tail = cleanText.slice(cit.end);
+      const shortRe = /^\s*[;,]\s*(\d+)\s*(?:[^\w\s]+|pars?\.?|p\.?)\s*(\d+)(?:\s*[-\u2013]\s*(\d+))?/;
+      let scan = tail;
+      let offset = cit.end;
+      while (true) {
+        const mm = scan.match(shortRe);
+        if (!mm)
+          break;
+        const page = mm[1];
+        const para = mm[2];
+        const paraEnd = mm[3];
+        const fullMatch = mm[0];
+        const shStart = offset + scan.indexOf(fullMatch);
+        let trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
+        const trimmedEnd = trimmedStart + fullMatch.trim().length;
+        while (trimmedStart < trimmedEnd && /[\s;,]/.test(cleanText[trimmedStart]))
+          trimmedStart++;
+        const origShStart = cleanToOrig[trimmedStart];
+        const origShEnd = cleanToOrig[trimmedEnd - 1] + 1;
+        if (!items.some((it) => origShStart < it.cit.end && origShEnd > it.cit.start)) {
+          const q = paraEnd ? `${root} ${page} ${para}-${paraEnd}` : `${root} ${page} ${para}`;
+          const u = buildWolUrl(q);
+          const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).trim()}`.replace(/_/g, "").trim();
+          items.push({ cit: { text: display, start: origShStart, end: origShEnd }, query: q, url: u, isPub: true });
+        } else {
+          skipped.push(`shorthand ${fullMatch.trim()} (overlapped another citation)`);
+        }
+        offset = trimmedEnd;
+        scan = cleanText.slice(offset);
+      }
+    }
+  }
+  const titleRefRe = new RegExp(`\\bit(-[12])?\\s+[""\u201C\u201D\xAB\xBB]?([A-Za-z][A-Za-z\\s'-]+?)[""\u201C\u201D\xAB\xBB]?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+)`, "g");
+  while ((m = titleRefRe.exec(cleanText)) !== null) {
+    const vol = m[1] || "-2";
+    const title = m[2].trim();
+    const para = m[3];
+    const cleanStart = m.index;
+    const cleanEnd = m.index + m[0].length;
+    const start = cleanToOrig[cleanStart];
+    const end = cleanToOrig[cleanEnd - 1] + 1;
+    if (items.some((it) => start < it.cit.end && end > it.cit.start)) {
+      skipped.push(`title ref ${m[0]} (overlapped another citation)`);
+      continue;
+    }
+    const query = `it${vol} "${title}" \xB6${para}`;
+    const url = buildWolUrl(query);
+    const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, "").trim();
+    items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
+  }
+  const ijwbvRe = /\bijwbv\s+(?:article\s+)?(\d+)/gi;
+  while ((m = ijwbvRe.exec(cleanText)) !== null) {
+    const num = m[1];
+    const cleanStart = m.index;
+    const cleanEnd = m.index + m[0].length;
+    const start = cleanToOrig[cleanStart];
+    const end = cleanToOrig[cleanEnd - 1] + 1;
+    if (items.some((it) => start < it.cit.end && end > it.cit.start)) {
+      skipped.push(`ijwbv ${num} (overlapped another citation)`);
+      continue;
+    }
+    const query = `ijwbv ${num}`;
+    const url = buildWolUrl(query);
+    const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, "").trim() || `ijwbv ${num}`;
+    items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
+  }
+  for (let k = items.length - 1; k >= 0; k--) {
+    const it = items[k];
+    if (linkUrlRanges.some((r) => it.cit.start < r.end && it.cit.end > r.start)) {
+      skipped.push(`${it.cit.text} (inside an existing link URL)`);
+      items.splice(k, 1);
+    }
+  }
+  items.sort((a, b) => a.cit.start - b.cit.start);
+  return { items, skipped };
+}
+function buildPubQuery(cleanText, cit) {
+  var _a, _b, _c;
+  const tail = cleanText.slice(cit.end, cit.end + 48);
+  const root = cit.text.replace(/\s+\d+\s*$/, "").trim();
+  const startPage = String((_c = (_b = cit.parts.page) != null ? _b : (_a = cit.text.match(/(\d+)\s*$/)) == null ? void 0 : _a[1]) != null ? _c : "");
+  const crossMatch = tail.match(/^\s*par\.?\s*\d+\s*[-–]\s*(\d+)\s*par\.?\s*\d+/i);
+  if (crossMatch) {
+    const endPage = crossMatch[1];
+    const fullTailMatch = tail.match(/^\s*par\.?\s*\d+\s*[-–]\s*\d+\s*par\.?\s*\d+/i);
+    const fullTail = fullTailMatch ? fullTailMatch[0] : "";
+    const fullRef = (cit.text + fullTail).trim();
+    return { query: `${root} ${startPage}-${endPage}`, fullRef };
+  }
+  const sameRangeMatch = tail.match(/^\s*pars?\.?\s*(\d+)\s*[-–]\s*(\d+)/i);
+  if (sameRangeMatch) {
+    const pStart = sameRangeMatch[1];
+    const pEnd = sameRangeMatch[2];
+    const fullTail = sameRangeMatch[0];
+    const fullRef = (cit.text + fullTail).trim();
+    return { query: `${cit.text} ${pStart}-${pEnd}`, fullRef };
+  }
+  const singleMatch = tail.match(/^\s*(?:par\.?|¶)\s*(\d+)/i);
+  if (singleMatch) {
+    const para = singleMatch[1];
+    const fullTail = singleMatch[0];
+    const fullRef = (cit.text + fullTail).trim();
+    return { query: `${cit.text} ${para}`, fullRef };
+  }
+  return { query: cit.text, fullRef: cit.text };
+}
+
+// editor.ts
+var import_view = require("@codemirror/view");
+var import_state = require("@codemirror/state");
+var DEBOUNCE_MS = 150;
+var VIEWPORT_DEBOUNCE_MS = 75;
+var liveLinksEnabled = true;
+var fullRescanRequested = false;
+function setLivePublicationLinks(enabled) {
+  liveLinksEnabled = enabled;
+}
+function requestWolTextFullRescan() {
+  fullRescanRequested = true;
+}
+function decorationsForRange(view, from, to, out) {
+  if (!liveLinksEnabled || to <= from)
+    return;
+  const text = view.state.doc.sliceString(from, to);
+  if (!text.trim())
+    return;
+  const result = detectCitations(text);
+  if (result.items.length === 0)
+    return;
+  const linkRanges = [];
+  const linkRe = /\[[^\]]*\]\([^)]*\)/g;
+  let lm;
+  while ((lm = linkRe.exec(text)) !== null) {
+    linkRanges.push({ start: lm.index, end: lm.index + lm[0].length });
+  }
+  for (const item of result.items) {
+    if (!item.isPub)
+      continue;
+    if (item.cit.end <= item.cit.start)
+      continue;
+    if (!item.url)
+      continue;
+    if (text.slice(item.cit.start, item.cit.end).includes("\n"))
+      continue;
+    if (linkRanges.some((r) => item.cit.start >= r.start && item.cit.end <= r.end))
+      continue;
+    out.push({
+      from: from + item.cit.start,
+      to: from + item.cit.end,
+      deco: import_view.Decoration.mark({
+        class: "woltext-link",
+        attributes: { "data-woltext-url": item.url }
+      })
+    });
+  }
+}
+function buildDecorationSet(entries) {
+  entries.sort((a, b) => a.from === b.from ? a.to - b.to : a.from - b.from);
+  const builder = new import_state.RangeSetBuilder();
+  let lastTo = -1;
+  for (const d of entries) {
+    if (d.from < lastTo)
+      continue;
+    builder.add(d.from, d.to, d.deco);
+    lastTo = d.to;
+  }
+  return builder.finish();
+}
+function visibleLineRanges(view) {
+  const raw = [];
+  for (const r of view.visibleRanges) {
+    const from = view.state.doc.lineAt(r.from).from;
+    const to = view.state.doc.lineAt(r.to).to;
+    raw.push({ from, to });
+  }
+  raw.sort((a, b) => a.from - b.from);
+  const merged = [];
+  for (const r of raw) {
+    const last = merged[merged.length - 1];
+    if (last && r.from <= last.to) {
+      last.to = Math.max(last.to, r.to);
+    } else {
+      merged.push({ from: r.from, to: r.to });
+    }
+  }
+  return merged;
+}
+function buildDecorationsForVisibleRanges(view) {
+  const all = [];
+  for (const { from, to } of visibleLineRanges(view)) {
+    decorationsForRange(view, from, to, all);
+  }
+  return buildDecorationSet(all);
+}
+function computeRescanTarget(update) {
+  const { changes, startState, state } = update;
+  if (changes.empty)
+    return null;
+  let totalChanged = 0;
+  let minLine = Number.POSITIVE_INFINITY;
+  let maxLine = Number.NEGATIVE_INFINITY;
+  changes.iterChanges((fromA, toA, _fromB, _toB) => {
+    totalChanged += toA - fromA + (_toB - _fromB);
+    const startLine = startState.doc.lineAt(fromA).number;
+    const endLine = startState.doc.lineAt(Math.min(toA, startState.doc.length)).number;
+    if (startLine < minLine)
+      minLine = startLine;
+    if (endLine > maxLine)
+      maxLine = endLine;
+  });
+  if (!Number.isFinite(minLine) || !Number.isFinite(maxLine)) {
+    return { from: 0, to: 0, full: true };
+  }
+  const expandedMinLine = Math.max(1, minLine - 1);
+  const expandedMaxLine = Math.min(state.doc.lines, maxLine + 1);
+  const lineSpan = expandedMaxLine - expandedMinLine + 1;
+  const isSmall = totalChanged <= 64 && lineSpan <= 5;
+  if (!isSmall)
+    return { from: 0, to: 0, full: true };
+  const fromPos = state.doc.line(expandedMinLine).from;
+  const toPos = state.doc.line(expandedMaxLine).to;
+  if (toPos - fromPos > 4096)
+    return { from: 0, to: 0, full: true };
+  return { from: fromPos, to: toPos, full: false };
+}
+function createWolTextEditorPlugin() {
+  return import_view.ViewPlugin.fromClass(
+    class {
+      constructor(view) {
+        this.debounceTimer = null;
+        this.viewportTimer = null;
+        this.pendingTarget = null;
+        this.decorations = buildDecorationsForVisibleRanges(view);
+      }
+      scheduleRescan(view, target, delay) {
+        this.pendingTarget = target;
+        if (this.debounceTimer !== null) {
+          window.clearTimeout(this.debounceTimer);
+        }
+        this.debounceTimer = window.setTimeout(() => {
+          this.debounceTimer = null;
+          const t = this.pendingTarget;
+          this.pendingTarget = null;
+          this.applyRescan(view, t);
+        }, delay);
+      }
+      applyRescan(view, target) {
+        if (!target || target.full) {
+          this.decorations = buildDecorationsForVisibleRanges(view);
+          return;
+        }
+        if (target.to <= target.from)
+          return;
+        const newEntries = [];
+        decorationsForRange(view, target.from, target.to, newEntries);
+        const rescanFrom = target.from;
+        const rescanTo = target.to;
+        this.decorations = this.decorations.update({
+          filter: (from, to) => !(from < rescanTo && to > rescanFrom),
+          add: newEntries.map((e) => ({ from: e.from, to: e.to, value: e.deco })),
+          sort: true
+        });
+      }
+      update(update) {
+        if (fullRescanRequested) {
+          fullRescanRequested = false;
+          this.scheduleRescan(update.view, { from: 0, to: 0, full: true }, 0);
+          return;
+        }
+        if (update.docChanged) {
+          this.decorations = this.decorations.map(update.changes);
+          this.scheduleRescan(update.view, computeRescanTarget(update), DEBOUNCE_MS);
+          return;
+        }
+        if (update.viewportChanged) {
+          if (this.debounceTimer !== null) {
+            window.clearTimeout(this.debounceTimer);
+            this.debounceTimer = null;
+            this.pendingTarget = null;
+          }
+          if (this.viewportTimer !== null) {
+            window.clearTimeout(this.viewportTimer);
+          }
+          const view = update.view;
+          this.viewportTimer = window.setTimeout(() => {
+            this.viewportTimer = null;
+            this.decorations = buildDecorationsForVisibleRanges(view);
+            view.dispatch({});
+          }, VIEWPORT_DEBOUNCE_MS);
+        }
+      }
+      destroy() {
+        if (this.debounceTimer !== null) {
+          window.clearTimeout(this.debounceTimer);
+          this.debounceTimer = null;
+        }
+        if (this.viewportTimer !== null) {
+          window.clearTimeout(this.viewportTimer);
+          this.viewportTimer = null;
+        }
+      }
+    },
+    {
+      decorations: (v) => v.decorations,
+      eventHandlers: {
+        mousedown: (e, _view) => {
+          if (e.button !== 0)
+            return;
+          const target = e.target;
+          const linkEl = target.closest(".woltext-link");
+          if (!linkEl)
+            return;
+          const url = linkEl.getAttribute("data-woltext-url");
+          if (!url)
+            return;
+          e.preventDefault();
+          e.stopPropagation();
+          window.open(url, "_blank");
+        }
+      }
+    }
+  );
+}
+
+// post-processor.ts
+var SKIP_SELECTOR = ".callout, blockquote, pre, code, a, .woltext-link";
+function processReadingView(el) {
+  if (el.closest(SKIP_SELECTOR))
+    return;
+  if (el.matches(SKIP_SELECTOR))
+    return;
+  for (const block of collectBlockElements(el)) {
+    if (block.matches(SKIP_SELECTOR))
+      continue;
+    if (block.closest(SKIP_SELECTOR))
+      continue;
+    if (isInlineContainer(block.tagName))
+      continue;
+    processBlockElement(block);
+  }
+}
+function isInlineContainer(tagName) {
+  return tagName === "EM" || tagName === "STRONG";
+}
+function isDisqualifying(tagName) {
+  return tagName === "CODE" || tagName === "PRE" || tagName === "A";
+}
+function collectRun(children, startIndex) {
+  const run = [];
+  let i = startIndex;
+  while (i < children.length) {
+    const child = children[i];
+    if (child.nodeType === Node.TEXT_NODE) {
+      run.push({ node: child, text: child.nodeValue || "", start: 0 });
+      i++;
+      continue;
+    }
+    if (child.nodeType === Node.ELEMENT_NODE) {
+      const elem = child;
+      if (elem.tagName === "A")
+        break;
+      if (elem.classList.contains("woltext-link"))
+        break;
+      if (isDisqualifying(elem.tagName))
+        return null;
+      if (!isInlineContainer(elem.tagName))
+        break;
+      let allText = true;
+      let text = "";
+      for (const inner of Array.from(elem.childNodes)) {
+        if (inner.nodeType === Node.TEXT_NODE) {
+          text += inner.nodeValue || "";
+        } else {
+          allText = false;
+          break;
+        }
+      }
+      if (!allText)
+        return null;
+      run.push({ node: child, text, start: 0 });
+      i++;
+      continue;
+    }
+    break;
+  }
+  if (run.length === 0)
+    return null;
+  return { children: run, endIndex: i - 1 };
+}
+function flattenRun(run) {
+  let pos = 0;
+  let out = "";
+  for (const rc of run) {
+    rc.start = pos;
+    out += rc.text;
+    pos += rc.text.length;
+  }
+  return out;
+}
+function clipNode(source, from, to) {
+  if (from >= to)
+    return activeDocument.createTextNode("");
+  if (source.nodeType === Node.TEXT_NODE) {
+    const text = source.nodeValue || "";
+    return activeDocument.createTextNode(text.substring(from, to));
+  }
+  const clone = source.cloneNode(false);
+  let pos = 0;
+  for (const inner of Array.from(source.childNodes)) {
+    if (inner.nodeType !== Node.TEXT_NODE)
+      continue;
+    const text = inner.nodeValue || "";
+    const innerStart = pos;
+    const innerEnd = pos + text.length;
+    pos = innerEnd;
+    const sliceStart = Math.max(from, innerStart);
+    const sliceEnd = Math.min(to, innerEnd);
+    if (sliceStart >= sliceEnd)
+      continue;
+    clone.appendChild(
+      activeDocument.createTextNode(text.substring(sliceStart - innerStart, sliceEnd - innerStart))
+    );
+  }
+  return clone;
+}
+function replaceRunRange(run, from, to, wolUrl) {
+  const first = run[0];
+  const parent = first.node.parentNode;
+  if (!parent)
+    return;
+  const fragment = createFragment();
+  for (const rc of run) {
+    const rcEnd = rc.start + rc.text.length;
+    if (rcEnd <= from) {
+      fragment.appendChild(rc.node.cloneNode(true));
+    } else if (rc.start < from) {
+      fragment.appendChild(clipNode(rc.node, 0, from - rc.start));
+    } else {
+      break;
+    }
+  }
+  const anchor = createEl("a");
+  anchor.className = "woltext-link";
+  anchor.href = wolUrl;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  for (const rc of run) {
+    const rcEnd = rc.start + rc.text.length;
+    if (rcEnd <= from)
+      continue;
+    if (rc.start >= to)
+      break;
+    const localFrom = Math.max(0, from - rc.start);
+    const localTo = Math.min(rc.text.length, to - rc.start);
+    anchor.appendChild(clipNode(rc.node, localFrom, localTo));
+  }
+  fragment.appendChild(anchor);
+  for (const rc of run) {
+    const rcEnd = rc.start + rc.text.length;
+    if (rcEnd <= to)
+      continue;
+    const localFrom = Math.max(0, to - rc.start);
+    fragment.appendChild(clipNode(rc.node, localFrom, rc.text.length));
+  }
+  parent.insertBefore(fragment, first.node);
+  for (const rc of run) {
+    parent.removeChild(rc.node);
+  }
+}
+function collectBlockElements(root) {
+  const out = [];
+  const walk = (node) => {
+    out.push(node);
+    for (const child of Array.from(node.children)) {
+      if (child.instanceOf(HTMLElement))
+        walk(child);
+    }
+  };
+  walk(root);
+  return out;
+}
+function processBlockElement(block) {
+  let children = Array.from(block.childNodes);
+  let i = 0;
+  while (i < children.length) {
+    const child = children[i];
+    if (child.nodeType === Node.ELEMENT_NODE) {
+      const elem = child;
+      if (elem.tagName === "A") {
+        i++;
+        continue;
+      }
+      if (elem.classList.contains("woltext-link")) {
+        i++;
+        continue;
+      }
+      if (isDisqualifying(elem.tagName)) {
+        i++;
+        continue;
+      }
+      if (!isInlineContainer(elem.tagName)) {
+        i++;
+        continue;
+      }
+    }
+    const run = collectRun(children, i);
+    if (!run) {
+      i++;
+      continue;
+    }
+    const flat = flattenRun(run.children);
+    if (!flat.trim()) {
+      i = run.endIndex + 1;
+      continue;
+    }
+    const pubs = detectCitations(flat).items.filter((c) => c.isPub);
+    if (pubs.length === 0) {
+      i = run.endIndex + 1;
+      continue;
+    }
+    const sorted = [...pubs].sort((a, b) => b.cit.start - a.cit.start);
+    for (const c of sorted) {
+      if (c.cit.end <= c.cit.start)
+        continue;
+      if (!c.url)
+        continue;
+      replaceRunRange(run.children, c.cit.start, c.cit.end, c.url);
+    }
+    children = Array.from(block.childNodes);
+    i = Math.min(i + 1, children.length);
+  }
+}
+
 // main.ts
 var DEFAULT_SETTINGS = {
   outputFormat: "blockquote",
@@ -510,6 +1135,9 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     } catch (e) {
       console.error("WOL Text Inserter: engine init failed", e);
     }
+    setLivePublicationLinks(this.settings.linkPublications);
+    this.registerEditorExtension(createWolTextEditorPlugin());
+    this.registerMarkdownPostProcessor((el) => processReadingView(el));
     this.addCommand({
       id: "insert-wol-text",
       name: "Insert WOL text for citations in note",
@@ -518,7 +1146,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       }
     });
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 17:29:58"}) loaded`);
+    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 21:17:59"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -529,6 +1157,19 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
   async loadSettings() {
     const saved = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
+    setLivePublicationLinks(this.settings.linkPublications);
+  }
+  /** Force open editors to redraw their live publication links. */
+  refreshEditorDecorations() {
+    requestWolTextFullRescan();
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      const view = leaf.view;
+      if (!(view instanceof import_obsidian.MarkdownView))
+        return;
+      const cmView = view.editor.cm;
+      if (cmView == null ? void 0 : cmView.dispatch)
+        cmView.dispatch({});
+    });
   }
   async saveSettings() {
     await this.saveData(this.settings);
@@ -545,182 +1186,20 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       new import_obsidian.Notice("Note is empty.");
       return;
     }
-    const cleanChars = [];
-    const cleanToOrig = [];
-    const pushChar = (idx) => {
-      if (original[idx] === "_")
-        return;
-      cleanChars.push(original[idx]);
-      cleanToOrig.push(idx);
-    };
-    let ci = 0;
-    while (ci < original.length) {
-      if (original[ci] === "[") {
-        const close = original.indexOf("]", ci);
-        if (close !== -1 && original[close + 1] === "(") {
-          const end = original.indexOf(")", close + 2);
-          if (end !== -1) {
-            for (let k = ci + 1; k < close; k++)
-              pushChar(k);
-            ci = end + 1;
-            continue;
-          }
-        }
-      }
-      pushChar(ci);
-      ci++;
-    }
-    const cleanText = cleanChars.join("");
-    const linkUrlRanges = [];
-    const linkUrlRe = /\]\(([^)]*)\)/g;
-    let lm;
-    while ((lm = linkUrlRe.exec(original)) !== null) {
-      const start = lm.index + 2;
-      linkUrlRanges.push({ start, end: start + lm[1].length });
-    }
-    const items = [];
-    const skipped = [];
-    const scriptureRunRe = /\b(?!(?:Read|See|Compare|And|But|Or|For|The|In|On|At|To|Of|A|An)\b)(\d{1,2}\s*)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\.?)\s+(\d{1,3}:\d{1,3}(?:-\d{1,3})?(?:\s*[;,]\s*\d{1,3}(?![A-Za-z])(?::\d{1,3})?(?:-\d{1,3})?)*)/g;
-    let m;
-    while ((m = scriptureRunRe.exec(cleanText)) !== null) {
-      const book = ((m[1] || "") + m[2]).trim();
-      const versesStr = m[3];
-      const verseTokens = versesStr.split(/\s*;\s*/);
-      let searchFrom = 0;
-      let lastChapter = "";
-      for (const rawVt of verseTokens) {
-        const vt = rawVt.trim();
-        if (!vt)
-          continue;
-        let token = vt;
-        if (/^\d+$/.test(token) && lastChapter) {
-          token = `${lastChapter}:${token}`;
-        }
-        const chapMatch = token.match(/^(\d+):/);
-        if (chapMatch)
-          lastChapter = chapMatch[1];
-        const idx = m[0].indexOf(rawVt.trim(), searchFrom);
-        if (idx === -1)
-          continue;
-        const cleanStart = m.index + idx;
-        const cleanEnd = cleanStart + rawVt.trim().length;
-        const origStart = searchFrom === 0 ? cleanToOrig[m.index] : cleanToOrig[cleanStart];
-        const origEnd = cleanToOrig[cleanEnd - 1] + 1;
-        if (items.some((it) => origStart < it.cit.end && origEnd > it.cit.start)) {
-          searchFrom = idx + rawVt.trim().length;
-          continue;
-        }
-        const fullRef = `${book} ${token}`.replace(/_/g, "");
-        const query = fullRef.replace(/,\s+/g, ",");
-        const url = `https://wol.jw.org/en/wol/l/r1/lp-e?q=${encodeURIComponent(query)}`;
-        items.push({ cit: { text: fullRef, start: origStart, end: origEnd }, query, url });
-        searchFrom = idx + rawVt.trim().length;
-      }
-    }
-    const pubCits = findCitations(cleanText);
-    if (pubCits) {
-      for (const cit of pubCits) {
-        const origStart = cleanToOrig[cit.start];
-        const origEnd = cleanToOrig[cit.end - 1] + 1;
-        if (items.some((it) => origStart < it.cit.end && origEnd > it.cit.start)) {
-          skipped.push(`publication ${cit.text} (overlapped a scripture match)`);
-          continue;
-        }
-        const cleanCit = { ...cit, text: cit.text.replace(/_/g, "") };
-        const { query, fullRef } = this.buildPubQuery(cleanText, cleanCit);
-        const url = buildWolUrl(query);
-        const cleanFullRef = fullRef.replace(/_/g, "");
-        const cleanFullEnd = Math.min(cit.start + fullRef.length, cleanText.length);
-        const origFullEnd = cleanFullEnd > 0 ? cleanToOrig[cleanFullEnd - 1] + 1 : origEnd;
-        const normCit = { text: cleanFullRef, start: origStart, end: origFullEnd };
-        items.push({ cit: normCit, query, url, isPub: true });
-        const root = cleanCit.text.replace(/\s+\d.*$/, "").trim();
-        const tail = cleanText.slice(cit.end);
-        const shortRe = /^\s*[;,]\s*(\d+)\s*(?:[^\w\s]+|pars?\.?|p\.?)\s*(\d+)(?:\s*[-\u2013]\s*(\d+))?/;
-        let scan = tail;
-        let offset = cit.end;
-        while (true) {
-          const mm = scan.match(shortRe);
-          if (!mm)
-            break;
-          const page = mm[1];
-          const para = mm[2];
-          const paraEnd = mm[3];
-          const fullMatch = mm[0];
-          const shStart = offset + scan.indexOf(fullMatch);
-          let trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
-          const trimmedEnd = trimmedStart + fullMatch.trim().length;
-          while (trimmedStart < trimmedEnd && /[\s;,]/.test(cleanText[trimmedStart]))
-            trimmedStart++;
-          const origShStart = cleanToOrig[trimmedStart];
-          const origShEnd = cleanToOrig[trimmedEnd - 1] + 1;
-          if (!items.some((it) => origShStart < it.cit.end && origShEnd > it.cit.start)) {
-            const q = paraEnd ? `${root} ${page} ${para}-${paraEnd}` : `${root} ${page} ${para}`;
-            const u = buildWolUrl(q);
-            const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).trim()}`.replace(/_/g, "").trim();
-            items.push({ cit: { text: display, start: origShStart, end: origShEnd }, query: q, url: u, isPub: true });
-          } else {
-            skipped.push(`shorthand ${fullMatch.trim()} (overlapped another citation)`);
-          }
-          offset = trimmedEnd;
-          scan = cleanText.slice(offset);
-        }
-      }
-    }
-    const titleRefRe = new RegExp(`\\bit(-[12])?\\s+[""\u201C\u201D\xAB\xBB]?([A-Za-z][A-Za-z\\s'-]+?)[""\u201C\u201D\xAB\xBB]?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+)`, "g");
-    while ((m = titleRefRe.exec(cleanText)) !== null) {
-      const vol = m[1] || "-2";
-      const title = m[2].trim();
-      const para = m[3];
-      const cleanStart = m.index;
-      const cleanEnd = m.index + m[0].length;
-      const start = cleanToOrig[cleanStart];
-      const end = cleanToOrig[cleanEnd - 1] + 1;
-      if (items.some((it) => start < it.cit.end && end > it.cit.start)) {
-        skipped.push(`title ref ${m[0]} (overlapped another citation)`);
-        continue;
-      }
-      const query = `it${vol} "${title}" \xB6${para}`;
-      const url = buildWolUrl(query);
-      const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, "").trim();
-      items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
-    }
-    const ijwbvRe = /\bijwbv\s+(?:article\s+)?(\d+)/gi;
-    while ((m = ijwbvRe.exec(cleanText)) !== null) {
-      const num = m[1];
-      const cleanStart = m.index;
-      const cleanEnd = m.index + m[0].length;
-      const start = cleanToOrig[cleanStart];
-      const end = cleanToOrig[cleanEnd - 1] + 1;
-      if (items.some((it) => start < it.cit.end && end > it.cit.start)) {
-        skipped.push(`ijwbv ${num} (overlapped another citation)`);
-        continue;
-      }
-      const query = `ijwbv ${num}`;
-      const url = buildWolUrl(query);
-      const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, "").trim() || `ijwbv ${num}`;
-      items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
-    }
-    for (let k = items.length - 1; k >= 0; k--) {
-      const it = items[k];
-      if (linkUrlRanges.some((r) => it.cit.start < r.end && it.cit.end > r.start)) {
-        skipped.push(`${it.cit.text} (inside an existing link URL)`);
-        items.splice(k, 1);
-      }
-    }
+    const { items, skipped } = detectCitations(original);
     if (items.length === 0) {
       new import_obsidian.Notice("No citations found.");
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 17:29:58"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 21:17:59"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-14 17:29:58"}`);
+    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-14 21:17:59"}`);
     const fetched = [];
     for (const item of items) {
       try {
@@ -784,11 +1263,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     const out = [];
     for (let i = 0; i < lines.length; i++) {
       const group = byLine[i];
-      let srcLine = lines[i];
-      if (group && this.settings.linkPublications) {
-        srcLine = linkifyPublications(srcLine, lineStarts[i], group.filter((g) => g.isPub));
-      }
-      out.push(srcLine);
+      out.push(lines[i]);
       if (group && group.length > 0) {
         out.push("");
         if (format === "callout") {
@@ -814,36 +1289,6 @@ ${bodyLines.join("\n")}`);
     }
     editor.setValue(out.join("\n"));
     new import_obsidian.Notice("Done. Review and save.");
-  }
-  buildPubQuery(cleanText, cit) {
-    var _a, _b, _c;
-    const tail = cleanText.slice(cit.end, cit.end + 48);
-    const root = cit.text.replace(/\s+\d+\s*$/, "").trim();
-    const startPage = String((_c = (_b = cit.parts.page) != null ? _b : (_a = cit.text.match(/(\d+)\s*$/)) == null ? void 0 : _a[1]) != null ? _c : "");
-    const crossMatch = tail.match(/^\s*par\.?\s*\d+\s*[-–]\s*(\d+)\s*par\.?\s*\d+/i);
-    if (crossMatch) {
-      const endPage = crossMatch[1];
-      const fullTailMatch = tail.match(/^\s*par\.?\s*\d+\s*[-–]\s*\d+\s*par\.?\s*\d+/i);
-      const fullTail = fullTailMatch ? fullTailMatch[0] : "";
-      const fullRef = (cit.text + fullTail).trim();
-      return { query: `${root} ${startPage}-${endPage}`, fullRef };
-    }
-    const sameRangeMatch = tail.match(/^\s*pars?\.?\s*(\d+)\s*[-–]\s*(\d+)/i);
-    if (sameRangeMatch) {
-      const pStart = sameRangeMatch[1];
-      const pEnd = sameRangeMatch[2];
-      const fullTail = sameRangeMatch[0];
-      const fullRef = (cit.text + fullTail).trim();
-      return { query: `${cit.text} ${pStart}-${pEnd}`, fullRef };
-    }
-    const singleMatch = tail.match(/^\s*(?:par\.?|¶)\s*(\d+)/i);
-    if (singleMatch) {
-      const para = singleMatch[1];
-      const fullTail = singleMatch[0];
-      const fullRef = (cit.text + fullTail).trim();
-      return { query: `${cit.text} ${para}`, fullRef };
-    }
-    return { query: cit.text, fullRef: cit.text };
   }
 };
 async function fetchPage(url) {
@@ -933,33 +1378,6 @@ function extractText(html) {
   const docParas = extractParagraphs(html, /\b(sl|sz|sb)\b/);
   return docParas.join("\n");
 }
-function linkifyPublications(line, lineStart, pubs) {
-  if (pubs.length === 0)
-    return line;
-  const linkRanges = [];
-  const linkRe = /\[[^\]]*\]\([^)]*\)/g;
-  let lm;
-  while ((lm = linkRe.exec(line)) !== null) {
-    linkRanges.push({ start: lm.index, end: lm.index + lm[0].length });
-  }
-  const edits = pubs.map((p) => ({
-    start: p.cit.start - lineStart,
-    end: p.cit.end - lineStart,
-    label: p.cit.text.trim(),
-    url: p.url
-  })).filter((e) => e.start >= 0 && e.end > e.start && e.end <= line.length && e.label.length > 0).filter((e) => !linkRanges.some((r) => e.start >= r.start && e.end <= r.end)).sort((a, b) => b.start - a.start);
-  let out = line;
-  for (const e of edits) {
-    let start = e.start;
-    let end = e.end;
-    while (start > 0 && out[start - 1] === "_")
-      start--;
-    while (end < out.length && out[end] === "_")
-      end++;
-    out = out.slice(0, start) + `[${e.label}](${e.url})` + out.slice(end);
-  }
-  return out;
-}
 var WolTextSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -973,9 +1391,11 @@ var WolTextSettingTab = class extends import_obsidian.PluginSettingTab {
       this.plugin.settings.outputFormat = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian.Setting(containerEl).setName("Link publication references").setDesc("Turn publication citations in the note into clickable WOL search links. Scriptures are left unchanged.").addToggle((toggle) => toggle.setValue(this.plugin.settings.linkPublications).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("Clickable publication links").setDesc("Show publication citations as clickable WOL search links in the editor and reading view. Scriptures are left unchanged. The insert command only adds the reference text.").addToggle((toggle) => toggle.setValue(this.plugin.settings.linkPublications).onChange(async (value) => {
       this.plugin.settings.linkPublications = value;
+      setLivePublicationLinks(value);
       await this.plugin.saveSettings();
+      this.plugin.refreshEditorDecorations();
     }));
   }
 };

@@ -1,1 +1,12 @@
-/* WOL Text Inserter - no custom styles yet */
+/* WOL Text Inserter */
+
+.woltext-link {
+    color: var(--link-color, var(--text-accent));
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.woltext-link:hover {
+    color: var(--link-color-hover, var(--text-accent-hover));
+}

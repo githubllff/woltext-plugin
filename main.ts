@@ -97,7 +97,9 @@ export default class WolTextPlugin extends Plugin {
                 if (idx === -1) continue;
                 const cleanStart = m.index + idx;
                 const cleanEnd = cleanStart + rawVt.trim().length;
-                const origStart = cleanToOrig[cleanStart];
+                // The first token also covers the book name ("Php 4:6, 7");
+                // later tokens only cover their own verse text ("7").
+                const origStart = searchFrom === 0 ? cleanToOrig[m.index] : cleanToOrig[cleanStart];
                 const origEnd = cleanToOrig[cleanEnd - 1] + 1;
                 if (items.some(it => origStart < it.cit.end && origEnd > it.cit.start)) {
                     searchFrom = idx + rawVt.trim().length;
@@ -106,7 +108,7 @@ export default class WolTextPlugin extends Plugin {
                 const fullRef = `${book} ${token}`.replace(/_/g, '');
                 const query = fullRef.replace(/,\s+/g, ',');
                 const url = `https://wol.jw.org/en/wol/l/r1/lp-e?q=${encodeURIComponent(query)}`;
-                items.push({ cit: { text: fullRef, start: origStart, end: origStart + fullRef.length }, query, url });
+                items.push({ cit: { text: fullRef, start: origStart, end: origEnd }, query, url });
                 searchFrom = idx + rawVt.trim().length;
             }
         }
@@ -122,7 +124,10 @@ export default class WolTextPlugin extends Plugin {
                 const { query, fullRef } = this.buildPubQuery(cleanText, cleanCit);
                 const url = buildWolUrl(query);
                 const cleanFullRef = fullRef.replace(/_/g, '');
-                const normCit = { text: cleanFullRef, start: origStart, end: origStart + cleanFullRef.length };
+                // fullRef lives in clean-text coordinates; map its end back to the original.
+                const cleanFullEnd = Math.min(cit.start + fullRef.length, cleanText.length);
+                const origFullEnd = cleanFullEnd > 0 ? cleanToOrig[cleanFullEnd - 1] + 1 : origEnd;
+                const normCit = { text: cleanFullRef, start: origStart, end: origFullEnd };
                 items.push({ cit: normCit, query, url });
 
                 // Publication shorthand runs: "w25.02 3 ¶7; 7 ¶18"
@@ -160,25 +165,30 @@ export default class WolTextPlugin extends Plugin {
             const vol = m[1] || '-2';
             const title = m[2].trim();
             const para = m[3];
-            const start = m.index;
-            const end = m.index + m[0].length;
+            const cleanStart = m.index;
+            const cleanEnd = m.index + m[0].length;
+            // Map back to ORIGINAL text offsets (other citations use those).
+            const start = cleanToOrig[cleanStart];
+            const end = cleanToOrig[cleanEnd - 1] + 1;
             if (items.some(it => start < it.cit.end && end > it.cit.start)) continue;
             const query = `it${vol} "${title}" \u00B6${para}`;
             const url = buildWolUrl(query);
-            const fullRef = cleanText.slice(start, end).replace(/_/g, '').trim();
-            items.push({ cit: { text: fullRef, start, end: start + fullRef.length }, query, url });
+            const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, '').trim();
+            items.push({ cit: { text: fullRef, start, end }, query, url });
         }
         // Meeting Workbook article references
         const ijwbvRe = /\bijwbv\s+(?:article\s+)?(\d+)/gi;
         while ((m = ijwbvRe.exec(cleanText)) !== null) {
             const num = m[1];
-            const start = m.index;
-            const end = m.index + m[0].length;
+            const cleanStart = m.index;
+            const cleanEnd = m.index + m[0].length;
+            const start = cleanToOrig[cleanStart];
+            const end = cleanToOrig[cleanEnd - 1] + 1;
             if (items.some(it => start < it.cit.end && end > it.cit.start)) continue;
             const query = `ijwbv ${num}`;
             const url = buildWolUrl(query);
-            const fullRef = cleanText.slice(start, end).replace(/_/g, '').trim() || `ijwbv ${num}`;
-            items.push({ cit: { text: fullRef, start, end: start + fullRef.length }, query, url });
+            const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, '').trim() || `ijwbv ${num}`;
+            items.push({ cit: { text: fullRef, start, end }, query, url });
         }
 
         if (items.length === 0) {

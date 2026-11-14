@@ -601,6 +601,32 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
         searchFrom = idx + rawVt.trim().length;
       }
     }
+    const titleRefRe = /\\bit(-[12])?\\s+[""«»]?([A-Za-z][A-Za-z\\s'-]+?)[""«»]?\\s*(?:¶|par\\.?|p\\.?)\\s*(\\d+)/g;
+    while ((m = titleRefRe.exec(cleanText)) !== null) {
+      const vol = m[1] || "-2";
+      const title = m[2].trim();
+      const para = m[3];
+      const start = m.index;
+      const end = m.index + m[0].length;
+      if (items.some((it) => start < it.cit.end && end > it.cit.start))
+        continue;
+      const query = `it${vol} "${title}"`;
+      const url = buildWolUrl(query);
+      const fullRef = cleanText.slice(start, end).replace(/_/g, "").trim();
+      items.push({ cit: { text: fullRef, start, end: start + fullRef.length }, query, url });
+    }
+    const ijwbvRe = /\\bijwbv\\s+(?:article\\s+)?(\\d+)/gi;
+    while ((m = ijwbvRe.exec(cleanText)) !== null) {
+      const num = m[1];
+      const start = m.index;
+      const end = m.index + m[0].length;
+      if (items.some((it) => start < it.cit.end && end > it.cit.start))
+        continue;
+      const query = `ijwbv ${num}`;
+      const url = buildWolUrl(query);
+      const fullRef = cleanText.slice(start, end).replace(/_/g, "").trim() || `ijwbv ${num}`;
+      items.push({ cit: { text: fullRef, start, end: start + fullRef.length }, query, url });
+    }
     if (items.length === 0) {
       new import_obsidian.Notice("No citations found.");
       return;

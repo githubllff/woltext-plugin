@@ -123,6 +123,33 @@ export default class WolTextPlugin extends Plugin {
             }
         }
 
+        // 3. Insight title references (e.g. _it_ "Peace" ¶3) and Meeting Workbook articles (e.g. _ijwbv_ article 50)
+        const titleRefRe = /\\bit(-[12])?\\s+[""«»]?([A-Za-z][A-Za-z\\s'-]+?)[""«»]?\\s*(?:¶|par\\.?|p\\.?)\\s*(\\d+)/g;
+        while ((m = titleRefRe.exec(cleanText)) !== null) {
+            const vol = m[1] || '-2';
+            const title = m[2].trim();
+            const para = m[3];
+            const start = m.index;
+            const end = m.index + m[0].length;
+            if (items.some(it => start < it.cit.end && end > it.cit.start)) continue;
+            const query = `it${vol} "${title}"`;
+            const url = buildWolUrl(query);
+            const fullRef = cleanText.slice(start, end).replace(/_/g, '').trim();
+            items.push({ cit: { text: fullRef, start, end: start + fullRef.length }, query, url });
+        }
+        // Meeting Workbook article references
+        const ijwbvRe = /\\bijwbv\\s+(?:article\\s+)?(\\d+)/gi;
+        while ((m = ijwbvRe.exec(cleanText)) !== null) {
+            const num = m[1];
+            const start = m.index;
+            const end = m.index + m[0].length;
+            if (items.some(it => start < it.cit.end && end > it.cit.start)) continue;
+            const query = `ijwbv ${num}`;
+            const url = buildWolUrl(query);
+            const fullRef = cleanText.slice(start, end).replace(/_/g, '').trim() || `ijwbv ${num}`;
+            items.push({ cit: { text: fullRef, start, end: start + fullRef.length }, query, url });
+        }
+
         if (items.length === 0) {
             new Notice('No citations found.');
             return;

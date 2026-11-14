@@ -1,4 +1,4 @@
-import { Plugin, MarkdownView, requestUrl, Notice, PluginSettingTab, Setting, App } from 'obsidian';
+﻿import { Plugin, MarkdownView, requestUrl, Notice, PluginSettingTab, Setting, App } from 'obsidian';
 import { initEngine, isEngineReady, resetEngine, findCitations, buildWolUrl } from './engine-wrapper';
 import { Citation } from './types';
 
@@ -123,8 +123,9 @@ export default class WolTextPlugin extends Plugin {
             }
         }
 
-        // 3. Insight title references (e.g. _it_ "Peace" ¶3) and Meeting Workbook articles (e.g. _ijwbv_ article 50)
-        const titleRefRe = /\\bit(-[12])?\\s+[""«»]?([A-Za-z][A-Za-z\\s'-]+?)[""«»]?\\s*(?:¶|par\\.?|p\\.?)\\s*(\\d+)/g;
+        // Insight title references (e.g. it "Peace" pilcrow 3) and Meeting Workbook articles (e.g. ijwbv article 50)
+        const pilcrow = '\u00B6';
+        const titleRefRe = new RegExp('\\bit(-[12])?\\s+[""]?([A-Za-z][A-Za-z\\s\'-]+?)[""]?\\s*(?:' + pilcrow + '|par\\.?|p\\.?)\\s*(\\d+)', 'g');
         while ((m = titleRefRe.exec(cleanText)) !== null) {
             const vol = m[1] || '-2';
             const title = m[2].trim();
@@ -138,7 +139,7 @@ export default class WolTextPlugin extends Plugin {
             items.push({ cit: { text: fullRef, start, end: start + fullRef.length }, query, url });
         }
         // Meeting Workbook article references
-        const ijwbvRe = /\\bijwbv\\s+(?:article\\s+)?(\\d+)/gi;
+        const ijwbvRe = /\bijwbv\s+(?:article\s+)?(\d+)/gi;
         while ((m = ijwbvRe.exec(cleanText)) !== null) {
             const num = m[1];
             const start = m.index;
@@ -199,7 +200,6 @@ export default class WolTextPlugin extends Plugin {
             return idx;
         }
 
-        // Group references by their source line.
         const byLine: Record<number, { cit: Item['cit']; text: string }[]> = {};
         for (const f of fetched) {
             const li = lineIndexForOffset(f.cit.start);
@@ -215,7 +215,6 @@ export default class WolTextPlugin extends Plugin {
             if (group && group.length > 0) {
                 out.push('');
                 if (format === 'callout') {
-                    // Single callout containing all references in this group.
                     const bodyLines: string[] = [];
                     for (const g of group) {
                         const lines2 = g.text.split('\n');

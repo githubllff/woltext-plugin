@@ -601,7 +601,8 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
         searchFrom = idx + rawVt.trim().length;
       }
     }
-    const titleRefRe = /\\bit(-[12])?\\s+[""«»]?([A-Za-z][A-Za-z\\s'-]+?)[""«»]?\\s*(?:¶|par\\.?|p\\.?)\\s*(\\d+)/g;
+    const pilcrow = "\xB6";
+    const titleRefRe = new RegExp(`\\bit(-[12])?\\s+[""]?([A-Za-z][A-Za-z\\s'-]+?)[""]?\\s*(?:` + pilcrow + "|par\\.?|p\\.?)\\s*(\\d+)", "g");
     while ((m = titleRefRe.exec(cleanText)) !== null) {
       const vol = m[1] || "-2";
       const title = m[2].trim();
@@ -615,7 +616,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       const fullRef = cleanText.slice(start, end).replace(/_/g, "").trim();
       items.push({ cit: { text: fullRef, start, end: start + fullRef.length }, query, url });
     }
-    const ijwbvRe = /\\bijwbv\\s+(?:article\\s+)?(\\d+)/gi;
+    const ijwbvRe = /\bijwbv\s+(?:article\s+)?(\d+)/gi;
     while ((m = ijwbvRe.exec(cleanText)) !== null) {
       const num = m[1];
       const start = m.index;

@@ -10,7 +10,9 @@ An Obsidian plugin that finds scripture and publication citations in a note, fet
 - **Underscore-wrapped references** (e.g. `[_w01_ 8/1 15-16 pars. 13-16]`) are handled.
 - **Verse sequences** with spaces after commas are normalized for lookup (`Galatians 5:22, 23` → `Galatians 5:22,23`).
 - **Hyperlinks unwrapped** — scripture/publication cross-references are kept as plain text; footnote markers removed.
-- **Indented output** — inserted text is indented by one tab.
+- **Clickable publication links** — publication references in the note become clickable WOL search links, while scriptures are left untouched (so your jwlibrary plugin can handle them). Toggle with **Link publication references** in the plugin settings.
+- **Safe re-runs** — running the command again keeps existing links intact and still inserts the text for every citation.
+- **Output format** — inserted text can be a blockquote, a tab-indented block, or a collapsible callout (choose in settings; default blockquote).
 
 ## Usage
 

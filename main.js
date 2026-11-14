@@ -495,7 +495,8 @@ function buildWolUrl(query) {
 
 // main.ts
 var DEFAULT_SETTINGS = {
-  outputFormat: "blockquote"
+  outputFormat: "blockquote",
+  linkPublications: true
 };
 var WolTextPlugin = class extends import_obsidian.Plugin {
   constructor() {
@@ -517,7 +518,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       }
     });
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 17:09:52"}) loaded`);
+    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 17:29:58"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -544,13 +545,39 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       new import_obsidian.Notice("Note is empty.");
       return;
     }
+    const cleanChars = [];
     const cleanToOrig = [];
-    for (let ci = 0; ci < original.length; ci++) {
-      if (original[ci] === "_")
-        continue;
-      cleanToOrig.push(ci);
+    const pushChar = (idx) => {
+      if (original[idx] === "_")
+        return;
+      cleanChars.push(original[idx]);
+      cleanToOrig.push(idx);
+    };
+    let ci = 0;
+    while (ci < original.length) {
+      if (original[ci] === "[") {
+        const close = original.indexOf("]", ci);
+        if (close !== -1 && original[close + 1] === "(") {
+          const end = original.indexOf(")", close + 2);
+          if (end !== -1) {
+            for (let k = ci + 1; k < close; k++)
+              pushChar(k);
+            ci = end + 1;
+            continue;
+          }
+        }
+      }
+      pushChar(ci);
+      ci++;
     }
-    const cleanText = original.replace(/_/g, "");
+    const cleanText = cleanChars.join("");
+    const linkUrlRanges = [];
+    const linkUrlRe = /\]\(([^)]*)\)/g;
+    let lm;
+    while ((lm = linkUrlRe.exec(original)) !== null) {
+      const start = lm.index + 2;
+      linkUrlRanges.push({ start, end: start + lm[1].length });
+    }
     const items = [];
     const skipped = [];
     const scriptureRunRe = /\b(?!(?:Read|See|Compare|And|But|Or|For|The|In|On|At|To|Of|A|An)\b)(\d{1,2}\s*)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\.?)\s+(\d{1,3}:\d{1,3}(?:-\d{1,3})?(?:\s*[;,]\s*\d{1,3}(?![A-Za-z])(?::\d{1,3})?(?:-\d{1,3})?)*)/g;
@@ -606,7 +633,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
         const cleanFullEnd = Math.min(cit.start + fullRef.length, cleanText.length);
         const origFullEnd = cleanFullEnd > 0 ? cleanToOrig[cleanFullEnd - 1] + 1 : origEnd;
         const normCit = { text: cleanFullRef, start: origStart, end: origFullEnd };
-        items.push({ cit: normCit, query, url });
+        items.push({ cit: normCit, query, url, isPub: true });
         const root = cleanCit.text.replace(/\s+\d.*$/, "").trim();
         const tail = cleanText.slice(cit.end);
         const shortRe = /^\s*[;,]\s*(\d+)\s*(?:[^\w\s]+|pars?\.?|p\.?)\s*(\d+)(?:\s*[-\u2013]\s*(\d+))?/;
@@ -621,15 +648,17 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
           const paraEnd = mm[3];
           const fullMatch = mm[0];
           const shStart = offset + scan.indexOf(fullMatch);
-          const trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
+          let trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
           const trimmedEnd = trimmedStart + fullMatch.trim().length;
+          while (trimmedStart < trimmedEnd && /[\s;,]/.test(cleanText[trimmedStart]))
+            trimmedStart++;
           const origShStart = cleanToOrig[trimmedStart];
           const origShEnd = cleanToOrig[trimmedEnd - 1] + 1;
           if (!items.some((it) => origShStart < it.cit.end && origShEnd > it.cit.start)) {
             const q = paraEnd ? `${root} ${page} ${para}-${paraEnd}` : `${root} ${page} ${para}`;
             const u = buildWolUrl(q);
-            const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).replace(/^\s*[;,]\s*/, "").trim()}`.replace(/_/g, "").trim();
-            items.push({ cit: { text: display, start: origShStart, end: origShEnd }, query: q, url: u });
+            const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).trim()}`.replace(/_/g, "").trim();
+            items.push({ cit: { text: display, start: origShStart, end: origShEnd }, query: q, url: u, isPub: true });
           } else {
             skipped.push(`shorthand ${fullMatch.trim()} (overlapped another citation)`);
           }
@@ -654,7 +683,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       const query = `it${vol} "${title}" \xB6${para}`;
       const url = buildWolUrl(query);
       const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, "").trim();
-      items.push({ cit: { text: fullRef, start, end }, query, url });
+      items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
     }
     const ijwbvRe = /\bijwbv\s+(?:article\s+)?(\d+)/gi;
     while ((m = ijwbvRe.exec(cleanText)) !== null) {
@@ -670,21 +699,28 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       const query = `ijwbv ${num}`;
       const url = buildWolUrl(query);
       const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, "").trim() || `ijwbv ${num}`;
-      items.push({ cit: { text: fullRef, start, end }, query, url });
+      items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
+    }
+    for (let k = items.length - 1; k >= 0; k--) {
+      const it = items[k];
+      if (linkUrlRanges.some((r) => it.cit.start < r.end && it.cit.end > r.start)) {
+        skipped.push(`${it.cit.text} (inside an existing link URL)`);
+        items.splice(k, 1);
+      }
     }
     if (items.length === 0) {
       new import_obsidian.Notice("No citations found.");
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 17:09:52"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 17:29:58"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-14 17:09:52"}`);
+    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-14 17:29:58"}`);
     const fetched = [];
     for (const item of items) {
       try {
@@ -707,12 +743,12 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
         const paraCount = text ? text.split("\n").length : 0;
         diag.push(`${item.query}  =>  ${item.url}`);
         diag.push(`    paragraphs=${paraCount} | ${(text || "(no text)").slice(0, 100).replace(/\n/g, " / ")}`);
-        fetched.push({ cit: item.cit, text: text || "(no text found)" });
+        fetched.push({ cit: item.cit, text: text || "(no text found)", url: item.url, isPub: item.isPub });
       } catch (e) {
         console.error("Fetch failed", item.url, e);
         diag.push(`${item.query}  =>  ${item.url}`);
         diag.push(`    FETCH ERROR: ${String(e)}`);
-        fetched.push({ cit: item.cit, text: "(fetch error)" });
+        fetched.push({ cit: item.cit, text: "(fetch error)", url: item.url, isPub: item.isPub });
       }
     }
     try {
@@ -742,13 +778,17 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       const li = lineIndexForOffset(f.cit.start);
       if (!byLine[li])
         byLine[li] = [];
-      byLine[li].push({ cit: f.cit, text: f.text });
+      byLine[li].push(f);
     }
     const format = this.settings.outputFormat;
     const out = [];
     for (let i = 0; i < lines.length; i++) {
-      out.push(lines[i]);
       const group = byLine[i];
+      let srcLine = lines[i];
+      if (group && this.settings.linkPublications) {
+        srcLine = linkifyPublications(srcLine, lineStarts[i], group.filter((g) => g.isPub));
+      }
+      out.push(srcLine);
       if (group && group.length > 0) {
         out.push("");
         if (format === "callout") {
@@ -893,6 +933,33 @@ function extractText(html) {
   const docParas = extractParagraphs(html, /\b(sl|sz|sb)\b/);
   return docParas.join("\n");
 }
+function linkifyPublications(line, lineStart, pubs) {
+  if (pubs.length === 0)
+    return line;
+  const linkRanges = [];
+  const linkRe = /\[[^\]]*\]\([^)]*\)/g;
+  let lm;
+  while ((lm = linkRe.exec(line)) !== null) {
+    linkRanges.push({ start: lm.index, end: lm.index + lm[0].length });
+  }
+  const edits = pubs.map((p) => ({
+    start: p.cit.start - lineStart,
+    end: p.cit.end - lineStart,
+    label: p.cit.text.trim(),
+    url: p.url
+  })).filter((e) => e.start >= 0 && e.end > e.start && e.end <= line.length && e.label.length > 0).filter((e) => !linkRanges.some((r) => e.start >= r.start && e.end <= r.end)).sort((a, b) => b.start - a.start);
+  let out = line;
+  for (const e of edits) {
+    let start = e.start;
+    let end = e.end;
+    while (start > 0 && out[start - 1] === "_")
+      start--;
+    while (end < out.length && out[end] === "_")
+      end++;
+    out = out.slice(0, start) + `[${e.label}](${e.url})` + out.slice(end);
+  }
+  return out;
+}
 var WolTextSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -904,6 +971,10 @@ var WolTextSettingTab = class extends import_obsidian.PluginSettingTab {
     containerEl.createEl("h2", { text: "WOL Text Inserter" });
     new import_obsidian.Setting(containerEl).setName("Output format").setDesc("How inserted references are formatted in the note.").addDropdown((drop) => drop.addOption("blockquote", "Blockquote (> )").addOption("indented", "Indented (tab)").addOption("callout", "Collapsible callout").setValue(this.plugin.settings.outputFormat).onChange(async (value) => {
       this.plugin.settings.outputFormat = value;
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian.Setting(containerEl).setName("Link publication references").setDesc("Turn publication citations in the note into clickable WOL search links. Scriptures are left unchanged.").addToggle((toggle) => toggle.setValue(this.plugin.settings.linkPublications).onChange(async (value) => {
+      this.plugin.settings.linkPublications = value;
       await this.plugin.saveSettings();
     }));
   }

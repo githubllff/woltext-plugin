@@ -6,16 +6,26 @@ declare const __BUILD_TIME__: string;
 
 interface WolTextSettings {
     outputFormat: 'blockquote' | 'indented' | 'callout';
+    linkPublications: boolean;
 }
 
 const DEFAULT_SETTINGS: WolTextSettings = {
     outputFormat: 'blockquote',
+    linkPublications: true,
 };
 
 interface Item {
     cit: { text: string; start: number; end: number };
     query: string;
     url: string;
+    isPub?: boolean;
+}
+
+interface Fetched {
+    cit: Item['cit'];
+    text: string;
+    url: string;
+    isPub?: boolean;
 }
 
 export default class WolTextPlugin extends Plugin {
@@ -68,12 +78,44 @@ export default class WolTextPlugin extends Plugin {
             return;
         }
 
+        // Build the detection text: underscores removed and existing markdown
+        // links reduced to their visible text, while keeping a map back to the
+        // original offsets. This keeps citations inside links (from earlier runs
+        // or other plugins) fully detectable without scanning their URLs.
+        const cleanChars: string[] = [];
         const cleanToOrig: number[] = [];
-        for (let ci = 0; ci < original.length; ci++) {
-            if (original[ci] === '_') continue;
-            cleanToOrig.push(ci);
+        const pushChar = (idx: number) => {
+            if (original[idx] === '_') return;
+            cleanChars.push(original[idx]);
+            cleanToOrig.push(idx);
+        };
+        let ci = 0;
+        while (ci < original.length) {
+            if (original[ci] === '[') {
+                const close = original.indexOf(']', ci);
+                if (close !== -1 && original[close + 1] === '(') {
+                    const end = original.indexOf(')', close + 2);
+                    if (end !== -1) {
+                        for (let k = ci + 1; k < close; k++) pushChar(k);
+                        ci = end + 1;
+                        continue;
+                    }
+                }
+            }
+            pushChar(ci);
+            ci++;
         }
-        const cleanText = original.replace(/_/g, '');
+        const cleanText = cleanChars.join('');
+
+        // Ranges of URLs inside existing markdown links, e.g. "](" ... ")".
+        // Re-running the command must not treat a URL query as a citation.
+        const linkUrlRanges: { start: number; end: number }[] = [];
+        const linkUrlRe = /\]\(([^)]*)\)/g;
+        let lm: RegExpExecArray | null;
+        while ((lm = linkUrlRe.exec(original)) !== null) {
+            const start = lm.index + 2;
+            linkUrlRanges.push({ start, end: start + lm[1].length });
+        }
 
         const items: Item[] = [];
         const skipped: string[] = [];
@@ -135,7 +177,7 @@ export default class WolTextPlugin extends Plugin {
                 const cleanFullEnd = Math.min(cit.start + fullRef.length, cleanText.length);
                 const origFullEnd = cleanFullEnd > 0 ? cleanToOrig[cleanFullEnd - 1] + 1 : origEnd;
                 const normCit = { text: cleanFullRef, start: origStart, end: origFullEnd };
-                items.push({ cit: normCit, query, url });
+                items.push({ cit: normCit, query, url, isPub: true });
 
                 // Publication shorthand runs: "w25.02 3 ¶7; 7 ¶18" or "w16.11 5 ¶4-6; 8 ¶15-19"
                 const root = cleanCit.text.replace(/\s+\d.*$/, '').trim();
@@ -151,15 +193,18 @@ export default class WolTextPlugin extends Plugin {
                     const paraEnd = mm[3];
                     const fullMatch = mm[0];
                     const shStart = offset + (scan.indexOf(fullMatch));
-                    const trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
+                    // Skip the "; " / ", " separator so the link covers only the
+                    // reference itself and the separator survives in the note.
+                    let trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
                     const trimmedEnd = trimmedStart + fullMatch.trim().length;
+                    while (trimmedStart < trimmedEnd && /[\s;,]/.test(cleanText[trimmedStart])) trimmedStart++;
                     const origShStart = cleanToOrig[trimmedStart];
                     const origShEnd = cleanToOrig[trimmedEnd - 1] + 1;
                     if (!items.some(it => origShStart < it.cit.end && origShEnd > it.cit.start)) {
                         const q = paraEnd ? `${root} ${page} ${para}-${paraEnd}` : `${root} ${page} ${para}`;
                         const u = buildWolUrl(q);
-                        const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).replace(/^\s*[;,]\s*/, '').trim()}`.replace(/_/g, '').trim();
-                        items.push({ cit: { text: display, start: origShStart, end: origShEnd }, query: q, url: u });
+                        const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).trim()}`.replace(/_/g, '').trim();
+                        items.push({ cit: { text: display, start: origShStart, end: origShEnd }, query: q, url: u, isPub: true });
                     } else {
                         skipped.push(`shorthand ${fullMatch.trim()} (overlapped another citation)`);
                     }
@@ -187,7 +232,7 @@ export default class WolTextPlugin extends Plugin {
             const query = `it${vol} "${title}" \u00B6${para}`;
             const url = buildWolUrl(query);
             const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, '').trim();
-            items.push({ cit: { text: fullRef, start, end }, query, url });
+            items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
         }
         // Meeting Workbook article references
         const ijwbvRe = /\bijwbv\s+(?:article\s+)?(\d+)/gi;
@@ -204,7 +249,16 @@ export default class WolTextPlugin extends Plugin {
             const query = `ijwbv ${num}`;
             const url = buildWolUrl(query);
             const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, '').trim() || `ijwbv ${num}`;
-            items.push({ cit: { text: fullRef, start, end }, query, url });
+            items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
+        }
+
+        // Drop anything that was detected inside an existing link's URL.
+        for (let k = items.length - 1; k >= 0; k--) {
+            const it = items[k];
+            if (linkUrlRanges.some(r => it.cit.start < r.end && it.cit.end > r.start)) {
+                skipped.push(`${it.cit.text} (inside an existing link URL)`);
+                items.splice(k, 1);
+            }
         }
 
         if (items.length === 0) {
@@ -222,7 +276,7 @@ export default class WolTextPlugin extends Plugin {
         }
         new Notice(`Found ${items.length} citation(s). Build ${__BUILD_TIME__}`);
 
-        const fetched: { cit: Item['cit']; text: string }[] = [];
+        const fetched: Fetched[] = [];
         for (const item of items) {
             try {
                 const html = await fetchPage(item.url);
@@ -245,12 +299,12 @@ export default class WolTextPlugin extends Plugin {
                 const paraCount = text ? text.split('\n').length : 0;
                 diag.push(`${item.query}  =>  ${item.url}`);
                 diag.push(`    paragraphs=${paraCount} | ${(text || '(no text)').slice(0, 100).replace(/\n/g, ' / ')}`);
-                fetched.push({ cit: item.cit, text: text || '(no text found)' });
+                fetched.push({ cit: item.cit, text: text || '(no text found)', url: item.url, isPub: item.isPub });
             } catch (e) {
                 console.error('Fetch failed', item.url, e);
                 diag.push(`${item.query}  =>  ${item.url}`);
                 diag.push(`    FETCH ERROR: ${String(e)}`);
-                fetched.push({ cit: item.cit, text: '(fetch error)' });
+                fetched.push({ cit: item.cit, text: '(fetch error)', url: item.url, isPub: item.isPub });
             }
         }
 
@@ -273,18 +327,24 @@ export default class WolTextPlugin extends Plugin {
             return idx;
         }
 
-        const byLine: Record<number, { cit: Item['cit']; text: string }[]> = {};
+        const byLine: Record<number, Fetched[]> = {};
         for (const f of fetched) {
             const li = lineIndexForOffset(f.cit.start);
             if (!byLine[li]) byLine[li] = [];
-            byLine[li].push({ cit: f.cit, text: f.text });
+            byLine[li].push(f);
         }
 
         const format = this.settings.outputFormat;
         const out: string[] = [];
         for (let i = 0; i < lines.length; i++) {
-            out.push(lines[i]);
             const group = byLine[i];
+            // Turn publication citations in the source line into WOL search links.
+            // Scriptures are deliberately left alone (handled by the user's other plugin).
+            let srcLine = lines[i];
+            if (group && this.settings.linkPublications) {
+                srcLine = linkifyPublications(srcLine, lineStarts[i], group.filter(g => g.isPub));
+            }
+            out.push(srcLine);
             if (group && group.length > 0) {
                 out.push('');
                 if (format === 'callout') {
@@ -447,6 +507,45 @@ function extractText(html: string): string {
     return docParas.join('\n');
 }
 
+/**
+ * Replace publication citations in a single source line with markdown links to
+ * their WOL lookup URL. Ranges are replaced right-to-left so earlier offsets
+ * stay valid. Anything already wrapped in a markdown link is left untouched.
+ */
+function linkifyPublications(line: string, lineStart: number, pubs: Fetched[]): string {
+    if (pubs.length === 0) return line;
+
+    // Any range already inside a markdown link is left alone (idempotent re-runs).
+    const linkRanges: { start: number; end: number }[] = [];
+    const linkRe = /\[[^\]]*\]\([^)]*\)/g;
+    let lm: RegExpExecArray | null;
+    while ((lm = linkRe.exec(line)) !== null) {
+        linkRanges.push({ start: lm.index, end: lm.index + lm[0].length });
+    }
+
+    const edits = pubs
+        .map(p => ({
+            start: p.cit.start - lineStart,
+            end: p.cit.end - lineStart,
+            label: p.cit.text.trim(),
+            url: p.url,
+        }))
+        .filter(e => e.start >= 0 && e.end > e.start && e.end <= line.length && e.label.length > 0)
+        .filter(e => !linkRanges.some(r => e.start >= r.start && e.end <= r.end))
+        .sort((a, b) => b.start - a.start);
+
+    let out = line;
+    for (const e of edits) {
+        // Expand over italic underscores that wrap the reference ("_w25.02_ ...").
+        let start = e.start;
+        let end = e.end;
+        while (start > 0 && out[start - 1] === '_') start--;
+        while (end < out.length && out[end] === '_') end++;
+        out = out.slice(0, start) + `[${e.label}](${e.url})` + out.slice(end);
+    }
+    return out;
+}
+
 class WolTextSettingTab extends PluginSettingTab {
     plugin: WolTextPlugin;
     constructor(app: App, plugin: WolTextPlugin) {
@@ -467,6 +566,15 @@ class WolTextSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.outputFormat)
                 .onChange(async (value) => {
                     this.plugin.settings.outputFormat = value as 'blockquote' | 'indented' | 'callout';
+                    await this.plugin.saveSettings();
+                }));
+        new Setting(containerEl)
+            .setName('Link publication references')
+            .setDesc('Turn publication citations in the note into clickable WOL search links. Scriptures are left unchanged.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.linkPublications)
+                .onChange(async (value) => {
+                    this.plugin.settings.linkPublications = value;
                     await this.plugin.saveSettings();
                 }));
     }

@@ -1147,7 +1147,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       }
     });
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 21:22:28"}) loaded`);
+    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 21:23:26"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -1164,12 +1164,15 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
   refreshEditorDecorations() {
     requestWolTextFullRescan();
     this.app.workspace.iterateAllLeaves((leaf) => {
+      var _a;
       const view = leaf.view;
       if (!(view instanceof import_obsidian.MarkdownView))
         return;
       const cmView = view.editor.cm;
       if (cmView == null ? void 0 : cmView.dispatch)
         cmView.dispatch({});
+      const previewMode = view.previewMode;
+      (_a = previewMode == null ? void 0 : previewMode.rerender) == null ? void 0 : _a.call(previewMode, true);
     });
   }
   async saveSettings() {
@@ -1193,14 +1196,14 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 21:22:28"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 21:23:26"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-14 21:22:28"}`);
+    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-14 21:23:26"}`);
     const fetched = [];
     for (const item of items) {
       try {

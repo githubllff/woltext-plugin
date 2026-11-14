@@ -68,6 +68,8 @@ export default class WolTextPlugin extends Plugin {
             if (!(view instanceof MarkdownView)) return;
             const cmView = (view.editor as unknown as { cm?: { dispatch?: (spec: unknown) => void } }).cm;
             if (cmView?.dispatch) cmView.dispatch({});
+            const previewMode = (view as unknown as { previewMode?: { rerender?: (full?: boolean) => void } }).previewMode;
+            previewMode?.rerender?.(true);
         });
     }
 

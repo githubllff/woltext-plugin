@@ -161,8 +161,7 @@ export default class WolTextPlugin extends Plugin {
         for (const f of fetched) {
             const li = lineIndexForOffset(f.cit.start);
             if (!byLine[li]) byLine[li] = [];
-            const body = f.text.split('\n').map(ln => `> ${ln}`).join('\n');
-            const indented = `> [!quote]+ ${f.cit.text}\n${body}`;
+            const indented = f.text.split('\n').map((ln, i) => i === 0 ? `> ${f.cit.text}: ${ln}` : `> ${ln}`).join('\n');
             byLine[li].push(indented);
         }
 

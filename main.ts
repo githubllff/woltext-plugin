@@ -172,29 +172,38 @@ export default class WolTextPlugin extends Plugin {
             return idx;
         }
 
-        const byLine: Record<number, string[]> = {};
+        // Group references by their source line.
+        const byLine: Record<number, { cit: Item['cit']; text: string }[]> = {};
         for (const f of fetched) {
             const li = lineIndexForOffset(f.cit.start);
             if (!byLine[li]) byLine[li] = [];
-            const format = this.settings.outputFormat;
-            let headerPrefix = '>';
-            let bodyPrefix = '>';
-            if (format === 'indented') { headerPrefix = '\t'; bodyPrefix = '\t'; }
-            else if (format === 'callout') { headerPrefix = '> [!quote]+'; bodyPrefix = '>'; }
-            const formatted = f.text.split('\n').map((ln, i) => {
-                if (i === 0) return `${headerPrefix} ${f.cit.text}: ${ln}`;
-                return `${bodyPrefix} ${ln}`;
-            }).join('\n');
-            byLine[li].push('');
-            byLine[li].push(formatted);
+            byLine[li].push({ cit: f.cit, text: f.text });
         }
 
+        const format = this.settings.outputFormat;
         const out: string[] = [];
         for (let i = 0; i < lines.length; i++) {
             out.push(lines[i]);
-            if (byLine[i]) {
-                for (const t of byLine[i]) {
-                    out.push(t);
+            const group = byLine[i];
+            if (group && group.length > 0) {
+                out.push('');
+                if (format === 'callout') {
+                    // Single callout containing all references in this group.
+                    const bodyLines: string[] = [];
+                    for (const g of group) {
+                        const lines2 = g.text.split('\n');
+                        bodyLines.push(`> **${g.cit.text}:** ${lines2[0]}`);
+                        for (let k = 1; k < lines2.length; k++) bodyLines.push(`> ${lines2[k]}`);
+                    }
+                    out.push(`> [!quote]+ References\n${bodyLines.join('\n')}`);
+                } else {
+                    const blocks: string[] = [];
+                    for (const g of group) {
+                        const lines2 = g.text.split('\n');
+                        const p = format === 'indented' ? '\t' : '>';
+                        blocks.push(lines2.map((ln, j) => j === 0 ? `${p} ${g.cit.text}: ${ln}` : `${p} ${ln}`).join('\n'));
+                    }
+                    out.push(blocks.join('\n'));
                 }
             }
         }

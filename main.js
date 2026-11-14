@@ -621,7 +621,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
           if (!items.some((it) => origShStart < it.cit.end && origShEnd > it.cit.start)) {
             const q = `${root} ${page} ${para}`;
             const u = buildWolUrl(q);
-            const display = cleanText.slice(trimmedStart, trimmedEnd).replace(/_/g, "").trim();
+            const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).replace(/^\s*[;,]\s*/, "").trim()}`.replace(/_/g, "").trim();
             items.push({ cit: { text: display, start: origShStart, end: origShStart + display.length }, query: q, url: u });
           }
           offset = trimmedEnd;
@@ -671,24 +671,21 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     for (const item of items) {
       try {
         const res = await (0, import_obsidian.requestUrl)({ url: item.url });
-        try {
-          await this.app.vault.adapter.write("woltext_lastfetch.html", res.text.slice(0, 2e3));
-        } catch (e) {
-        }
         let text = extractText(res.text);
-        const articleUrls = extractArticleUrls(res.text);
-        const hasParagraphs = extractHasParagraphs(res.text);
-        if (articleUrls.length > 0 && !hasParagraphs) {
-          const lastUrl = articleUrls[articleUrls.length - 1];
-          try {
-            const artRes = await (0, import_obsidian.requestUrl)({ url: lastUrl });
-            const artText = extractText(artRes.text);
-            text = artText || text || extractArticleTitles(res.text).join("\n");
-          } catch (e) {
-            console.error("Article fetch failed", lastUrl, e);
-            text = extractArticleTitles(res.text).join("\n") || text;
+        if (!text) {
+          const articleUrls = extractArticleUrls(res.text);
+          if (articleUrls.length > 0) {
+            const lastUrl = articleUrls[articleUrls.length - 1];
+            try {
+              const artRes = await (0, import_obsidian.requestUrl)({ url: lastUrl });
+              text = extractText(artRes.text);
+            } catch (e) {
+              console.error("Article fetch failed", lastUrl, e);
+            }
           }
         }
+        if (!text)
+          text = extractArticleTitles(res.text).join("\n");
         fetched.push({ cit: item.cit, text: text || "(no text found)" });
       } catch (e) {
         console.error("Fetch failed", item.url, e);
@@ -781,19 +778,54 @@ ${bodyLines.join("\n")}`);
     return { query: cit.text, fullRef: cit.text };
   }
 };
-function extractHasParagraphs(html) {
-  return /<p[^>]*class="[^"]*\b(sl|sz|sb)\b[^"]*"/.test(html);
+function lookupScope(html) {
+  const start = html.indexOf('class="lookupResults"');
+  if (start === -1)
+    return "";
+  const end = html.indexOf('id="regionFooter"', start);
+  return html.slice(start, end > start ? end : html.length);
 }
 function extractArticleUrls(html) {
+  const scope = lookupScope(html) || html;
   const urls = [];
   const re = /<a[^>]*href="(\/en\/wol\/d\/r1\/lp-e\/\d+)[^"]*"[^>]*>/g;
   let m;
-  while ((m = re.exec(html)) !== null) {
+  while ((m = re.exec(scope)) !== null) {
     const u = "https://wol.jw.org" + m[1];
     if (!urls.includes(u))
       urls.push(u);
   }
   return urls;
+}
+function cleanParagraph(inner) {
+  let s = inner;
+  s = s.replace(/<span[^>]*class="[^"]*\bparNum\b[^"]*"[\s\S]*?<\/span>/g, "");
+  s = s.replace(/<span[^>]*class="[^"]*\bpageNum\b[^"]*"[\s\S]*?<\/span>/g, "");
+  s = s.replace(/<a[^>]*>(\+|\*|\[\w+\])<\/a>/g, "");
+  s = s.replace(/<a[^>]*>([\s\S]*?)<\/a>/g, "$1");
+  s = s.replace(/<[^>]+>/g, "");
+  s = s.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'");
+  s = s.replace(/[\u200B\u200E\u200F]/g, "");
+  return s.replace(/\s+/g, " ").trim();
+}
+function extractParagraphs(html, requireClass) {
+  const paras = [];
+  const re = /<p([^>]*)>([\s\S]*?)<\/p>/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const clsMatch = /class="([^"]*)"/.exec(m[1]);
+    const cls = clsMatch ? clsMatch[1] : "";
+    if (requireClass) {
+      if (!requireClass.test(cls))
+        continue;
+    } else if (/\b(qu|noticeText|featureTtl|sc|videoErrorNotice|noMarkerNotice|gen-field)\b/.test(cls)) {
+      continue;
+    }
+    const txt = cleanParagraph(m[2]);
+    if (txt)
+      paras.push(txt);
+  }
+  return paras;
 }
 function extractArticleTitles(html) {
   const re = /class="[^"]*\bcardLine1\b[^"]*"[^>]*>([\s\S]*?)<\/div>/g;
@@ -807,26 +839,13 @@ function extractArticleTitles(html) {
   return titles;
 }
 function extractText(html) {
-  const paraRe = /<p[^>]*class="[^"]*\b(sl|sz|sb)\b[^"]*"[^>]*>([\s\S]*?)<\/p>/g;
-  const paras = [];
-  let m;
-  while ((m = paraRe.exec(html)) !== null) {
-    const txt = m[2].replace(/<a[^>]*>(\+|\*|\[\w\])<\/a>/g, "").replace(/<a[^>]*>([\s\S]*?)<\/a>/g, "$1").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-    if (txt)
-      paras.push(txt);
+  const lookup = lookupScope(html);
+  if (lookup) {
+    const lookupParas = extractParagraphs(lookup);
+    return lookupParas.join("\n");
   }
-  if (paras.length > 0)
-    return paras.join("\n");
-  const titleRe = /class="[^"]*\bcardLine1\b[^"]*"[^>]*>([\s\S]*?)<\/div>/g;
-  const titles = [];
-  while ((m = titleRe.exec(html)) !== null) {
-    const txt = m[1].replace(/<[^>]+>/g, "").trim();
-    if (txt)
-      titles.push(txt);
-  }
-  if (titles.length > 0)
-    return titles.join("\n");
-  return "";
+  const docParas = extractParagraphs(html, /\b(sl|sz|sb)\b/);
+  return docParas.join("\n");
 }
 var WolTextSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {

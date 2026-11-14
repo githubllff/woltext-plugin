@@ -145,7 +145,7 @@ export default class WolTextPlugin extends Plugin {
                     if (!items.some(it => origShStart < it.cit.end && origShEnd > it.cit.start)) {
                         const q = `${root} ${page} ${para}`;
                         const u = buildWolUrl(q);
-                        const display = cleanText.slice(trimmedStart, trimmedEnd).replace(/_/g, '').trim();
+                        const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).replace(/^\s*[;,]\s*/, '').trim()}`.replace(/_/g, '').trim();
                         items.push({ cit: { text: display, start: origShStart, end: origShStart + display.length }, query: q, url: u });
                     }
                     offset = trimmedEnd;
@@ -198,22 +198,22 @@ export default class WolTextPlugin extends Plugin {
         for (const item of items) {
             try {
                 const res = await requestUrl({ url: item.url });
-                // Debug: write fetched HTML to file
-                try { await this.app.vault.adapter.write('woltext_lastfetch.html', res.text.slice(0, 2000)); } catch (e) {}
                 let text = extractText(res.text);
-                const articleUrls = extractArticleUrls(res.text);
-                const hasParagraphs = extractHasParagraphs(res.text);
-                if (articleUrls.length > 0 && !hasParagraphs) {
-                    const lastUrl = articleUrls[articleUrls.length - 1];
-                    try {
-                        const artRes = await requestUrl({ url: lastUrl });
-                        const artText = extractText(artRes.text);
-                        text = artText || text || extractArticleTitles(res.text).join('\n');
-                    } catch (e) {
-                        console.error('Article fetch failed', lastUrl, e);
-                        text = extractArticleTitles(res.text).join('\n') || text;
+                if (!text) {
+                    // Lookup returned only article cards (e.g. Insight page ranges,
+                    // meeting workbook articles) - follow the last article link.
+                    const articleUrls = extractArticleUrls(res.text);
+                    if (articleUrls.length > 0) {
+                        const lastUrl = articleUrls[articleUrls.length - 1];
+                        try {
+                            const artRes = await requestUrl({ url: lastUrl });
+                            text = extractText(artRes.text);
+                        } catch (e) {
+                            console.error('Article fetch failed', lastUrl, e);
+                        }
                     }
                 }
+                if (!text) text = extractArticleTitles(res.text).join('\n');
                 fetched.push({ cit: item.cit, text: text || '(no text found)' });
             } catch (e) {
                 console.error('Fetch failed', item.url, e);
@@ -306,19 +306,63 @@ export default class WolTextPlugin extends Plugin {
     }
 }
 
-function extractHasParagraphs(html: string): boolean {
-    return /<p[^>]*class="[^"]*\b(sl|sz|sb)\b[^"]*"/.test(html);
+function lookupScope(html: string): string {
+    const start = html.indexOf('class="lookupResults"');
+    if (start === -1) return '';
+    const end = html.indexOf('id="regionFooter"', start);
+    return html.slice(start, end > start ? end : html.length);
 }
 
 function extractArticleUrls(html: string): string[] {
+    const scope = lookupScope(html) || html;
     const urls: string[] = [];
     const re = /<a[^>]*href="(\/en\/wol\/d\/r1\/lp-e\/\d+)[^"]*"[^>]*>/g;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(html)) !== null) {
+    while ((m = re.exec(scope)) !== null) {
         const u = 'https://wol.jw.org' + m[1];
         if (!urls.includes(u)) urls.push(u);
     }
     return urls;
+}
+
+function cleanParagraph(inner: string): string {
+    let s = inner;
+    // Publication paragraph-number badge (e.g. <span class="parNum" data-pnum="7">7</span>)
+    s = s.replace(/<span[^>]*class="[^"]*\bparNum\b[^"]*"[\s\S]*?<\/span>/g, '');
+    // Page-number markers
+    s = s.replace(/<span[^>]*class="[^"]*\bpageNum\b[^"]*"[\s\S]*?<\/span>/g, '');
+    // Footnote markers rendered as links (+ * [a])
+    s = s.replace(/<a[^>]*>(\+|\*|\[\w+\])<\/a>/g, '');
+    // Unwrap remaining hyperlinks, keep visible text
+    s = s.replace(/<a[^>]*>([\s\S]*?)<\/a>/g, '$1');
+    s = s.replace(/<[^>]+>/g, '');
+    s = s.replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;|&apos;/g, "'");
+    s = s.replace(/[\u200B\u200E\u200F]/g, '');
+    return s.replace(/\s+/g, ' ').trim();
+}
+
+function extractParagraphs(html: string, requireClass?: RegExp): string[] {
+    const paras: string[] = [];
+    const re = /<p([^>]*)>([\s\S]*?)<\/p>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+        const clsMatch = /class="([^"]*)"/.exec(m[1]);
+        const cls = clsMatch ? clsMatch[1] : '';
+        if (requireClass) {
+            if (!requireClass.test(cls)) continue;
+        } else if (/\b(qu|noticeText|featureTtl|sc|videoErrorNotice|noMarkerNotice|gen-field)\b/.test(cls)) {
+            // Skip study questions and UI noise on lookup pages
+            continue;
+        }
+        const txt = cleanParagraph(m[2]);
+        if (txt) paras.push(txt);
+    }
+    return paras;
 }
 
 function extractArticleTitles(html: string): string[] {
@@ -333,24 +377,18 @@ function extractArticleTitles(html: string): string[] {
 }
 
 function extractText(html: string): string {
-    const paraRe = /<p[^>]*class="[^"]*\b(sl|sz|sb)\b[^"]*"[^>]*>([\s\S]*?)<\/p>/g;
-    const paras: string[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = paraRe.exec(html)) !== null) {
-        const txt = m[2].replace(/<a[^>]*>(\+|\*|\[\w\])<\/a>/g, '').replace(/<a[^>]*>([\s\S]*?)<\/a>/g, '$1').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-        if (txt) paras.push(txt);
+    // 1. Lookup results page. The matching paragraph is returned with NO class
+    //    (or class="sb" for Insight / class="sl|sz" for Bible verses), so we must
+    //    accept class-less <p> elements here.
+    const lookup = lookupScope(html);
+    if (lookup) {
+        const lookupParas = extractParagraphs(lookup);
+        return lookupParas.join('\n');
     }
-    if (paras.length > 0) return paras.join('\n');
 
-    const titleRe = /class="[^"]*\bcardLine1\b[^"]*"[^>]*>([\s\S]*?)<\/div>/g;
-    const titles: string[] = [];
-    while ((m = titleRe.exec(html)) !== null) {
-        const txt = m[1].replace(/<[^>]+>/g, '').trim();
-        if (txt) titles.push(txt);
-    }
-    if (titles.length > 0) return titles.join('\n');
-
-    return '';
+    // 2. Document page. Body paragraphs carry sl/sz/sb classes.
+    const docParas = extractParagraphs(html, /\b(sl|sz|sb)\b/);
+    return docParas.join('\n');
 }
 
 class WolTextSettingTab extends PluginSettingTab {

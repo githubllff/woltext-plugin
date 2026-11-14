@@ -671,6 +671,10 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     for (const item of items) {
       try {
         const res = await (0, import_obsidian.requestUrl)({ url: item.url });
+        try {
+          await this.app.vault.adapter.write("woltext_lastfetch.html", res.text.slice(0, 2e3));
+        } catch (e) {
+        }
         let text = extractText(res.text);
         const articleUrls = extractArticleUrls(res.text);
         const hasParagraphs = extractHasParagraphs(res.text);

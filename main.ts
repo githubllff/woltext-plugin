@@ -198,6 +198,8 @@ export default class WolTextPlugin extends Plugin {
         for (const item of items) {
             try {
                 const res = await requestUrl({ url: item.url });
+                // Debug: write fetched HTML to file
+                try { await this.app.vault.adapter.write('woltext_lastfetch.html', res.text.slice(0, 2000)); } catch (e) {}
                 let text = extractText(res.text);
                 const articleUrls = extractArticleUrls(res.text);
                 const hasParagraphs = extractHasParagraphs(res.text);

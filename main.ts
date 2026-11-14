@@ -26,7 +26,7 @@ export default class WolTextPlugin extends Plugin {
         if (!isEngineReady()) {
             console.warn('WOL Text Inserter: engine not ready');
         }
-        new Notice('WOL Text Inserter v0.2.0 loaded');
+        new Notice('WOL Text Inserter v0.3.0 loaded');
     }
 
     onunload() {
@@ -48,8 +48,6 @@ export default class WolTextPlugin extends Plugin {
             return;
         }
 
-        // Build an underscore-stripped version of the note for detection, plus a
-        // position map from cleaned offsets back to original offsets.
         const cleanToOrig: number[] = [];
         for (let ci = 0; ci < original.length; ci++) {
             if (original[ci] === '_') continue;
@@ -59,7 +57,6 @@ export default class WolTextPlugin extends Plugin {
 
         const items: Item[] = [];
 
-        // 1. inrefens publications (run on cleaned text)
         const pubCits = findCitations(cleanText);
         if (pubCits) {
             for (const cit of pubCits) {
@@ -74,7 +71,6 @@ export default class WolTextPlugin extends Plugin {
             }
         }
 
-        // 2. scripture detection on cleaned text, including shorthand runs
         const scriptureRunRe = /\b(?!(?:Read|See|Compare|And|But|Or|For|The|In|On|At|To|Of|A|An)\b)(\d{1,2}\s*)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\.?)\s+(\d{1,3}:\d{1,3}(?:-\d{1,3})?(?:\s*[;,]\s*\d{1,3}(?![A-Za-z])(?::\d{1,3})?(?:-\d{1,3})?)*)/g;
         let m: RegExpExecArray | null;
         while ((m = scriptureRunRe.exec(cleanText)) !== null) {
@@ -172,7 +168,6 @@ export default class WolTextPlugin extends Plugin {
         const root = cit.text.replace(/\s+\d+\s*$/, '').trim();
         const startPage = String(cit.parts.page ?? cit.text.match(/(\d+)\s*$/)?.[1] ?? '');
 
-        // cross-page range: par. 4 - 30 par. 2
         const crossMatch = tail.match(/^\s*par\.?\s*\d+\s*[-–]\s*(\d+)\s*par\.?\s*\d+/i);
         if (crossMatch) {
             const endPage = crossMatch[1];
@@ -181,7 +176,6 @@ export default class WolTextPlugin extends Plugin {
             const fullRef = (cit.text + fullTail).trim();
             return { query: `${root} ${startPage}-${endPage}`, fullRef };
         }
-        // same-page paragraph range: pars. 3-4 (or par. 3-4)
         const sameRangeMatch = tail.match(/^\s*pars?\.?\s*(\d+)\s*[-–]\s*(\d+)/i);
         if (sameRangeMatch) {
             const pStart = sameRangeMatch[1];
@@ -190,7 +184,6 @@ export default class WolTextPlugin extends Plugin {
             const fullRef = (cit.text + fullTail).trim();
             return { query: `${cit.text} ${pStart}-${pEnd}`, fullRef };
         }
-        // single paragraph: par. 4
         const singleMatch = tail.match(/^\s*par\.?\s*(\d+)/i);
         if (singleMatch) {
             const para = singleMatch[1];
@@ -203,45 +196,25 @@ export default class WolTextPlugin extends Plugin {
 }
 
 function extractText(html: string): string {
-    try {
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        doc.querySelectorAll('a').forEach(a => {
-            const t = (a.textContent || '').trim();
-            if (/^\+?\[?[a-z]\]?$/.test(t) || t === '+' || t === '') {
-                a.remove();
-            } else {
-                a.replaceWith(doc.createTextNode(a.textContent || ''));
-            }
-        });
-        const paras = Array.from(doc.querySelectorAll('article p.sl, article p.sz, article p.sb'));
-        if (paras.length > 0) {
-            return paras.map(p => (p.textContent || '').replace(/\s+/g, ' ').trim()).filter(t => t).join('\n');
-        }
-        const any = Array.from(doc.querySelectorAll('p.sl, p.sz, p.sb'));
-        if (any.length > 0) {
-            return any.map(p => (p.textContent || '').replace(/\s+/g, ' ').trim()).filter(t => t).join('\n');
-        }
-        // Multi-article lookup pages (e.g. Insight page ranges) return a list of
-        // article titles instead of inline text.
-        const titles = Array.from(doc.querySelectorAll('li.linkCard .cardLine1, li.navCard .cardLine1, li.row.navCard .cardLine1'))
-            .map(el => (el.textContent || '').trim())
-            .filter(t => t);
-        if (titles.length > 0) {
-            return titles.join('\n');
-        }
-        // Fallback: any element with class cardLine1
-        const fallback = Array.from(doc.querySelectorAll('.cardLine1'))
-            .map(el => (el.textContent || '').trim())
-            .filter(t => t);
-        if (fallback.length > 0) {
-            return fallback.join('\n');
-        }
-        return '';
-    } catch (e) {
-        const m = html.match(/<p[^>]*class="[^"]*\bsb\b[^"]*"[^>]*>([\s\S]*?)<\/p>/);
-        if (m) {
-            return m[1].replace(/<a[\s\S]*?<\/a>/g, '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-        }
-        return '';
+    // Use regex instead of DOMParser (more robust across environments)
+    // 1. Scripture/publication paragraph text
+    const paraRe = /<p[^>]*class="[^"]*\b(sl|sz|sb)\b[^"]*"[^>]*>([\s\S]*?)<\/p>/g;
+    const paras: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = paraRe.exec(html)) !== null) {
+        const txt = m[2].replace(/<a[\s\S]*?<\/a>/g, '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+        if (txt) paras.push(txt);
     }
+    if (paras.length > 0) return paras.join('\n');
+
+    // 2. Multi-article Insight pages: extract article titles
+    const titleRe = /class="[^"]*\bcardLine1\b[^"]*"[^>]*>([\s\S]*?)<\/div>/g;
+    const titles: string[] = [];
+    while ((m = titleRe.exec(html)) !== null) {
+        const txt = m[1].replace(/<[^>]+>/g, '').trim();
+        if (txt) titles.push(txt);
+    }
+    if (titles.length > 0) return titles.join('\n');
+
+    return '';
 }

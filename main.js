@@ -512,7 +512,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
-    new import_obsidian.Notice("WOL Text Inserter v0.2.0 loaded");
+    new import_obsidian.Notice("WOL Text Inserter v0.3.0 loaded");
   }
   onunload() {
     resetEngine();
@@ -675,38 +675,24 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
   }
 };
 function extractText(html) {
-  try {
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    doc.querySelectorAll("a").forEach((a) => {
-      const t = (a.textContent || "").trim();
-      if (/^\+?\[?[a-z]\]?$/.test(t) || t === "+" || t === "") {
-        a.remove();
-      } else {
-        a.replaceWith(doc.createTextNode(a.textContent || ""));
-      }
-    });
-    const paras = Array.from(doc.querySelectorAll("article p.sl, article p.sz, article p.sb"));
-    if (paras.length > 0) {
-      return paras.map((p) => (p.textContent || "").replace(/\s+/g, " ").trim()).filter((t) => t).join("\n");
-    }
-    const any = Array.from(doc.querySelectorAll("p.sl, p.sz, p.sb"));
-    if (any.length > 0) {
-      return any.map((p) => (p.textContent || "").replace(/\s+/g, " ").trim()).filter((t) => t).join("\n");
-    }
-    const titles = Array.from(doc.querySelectorAll("li.linkCard .cardLine1, li.navCard .cardLine1, li.row.navCard .cardLine1")).map((el) => (el.textContent || "").trim()).filter((t) => t);
-    if (titles.length > 0) {
-      return titles.join("\n");
-    }
-    const fallback = Array.from(doc.querySelectorAll(".cardLine1")).map((el) => (el.textContent || "").trim()).filter((t) => t);
-    if (fallback.length > 0) {
-      return fallback.join("\n");
-    }
-    return "";
-  } catch (e) {
-    const m = html.match(/<p[^>]*class="[^"]*\bsb\b[^"]*"[^>]*>([\s\S]*?)<\/p>/);
-    if (m) {
-      return m[1].replace(/<a[\s\S]*?<\/a>/g, "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-    }
-    return "";
+  const paraRe = /<p[^>]*class="[^"]*\b(sl|sz|sb)\b[^"]*"[^>]*>([\s\S]*?)<\/p>/g;
+  const paras = [];
+  let m;
+  while ((m = paraRe.exec(html)) !== null) {
+    const txt = m[2].replace(/<a[\s\S]*?<\/a>/g, "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    if (txt)
+      paras.push(txt);
   }
+  if (paras.length > 0)
+    return paras.join("\n");
+  const titleRe = /class="[^"]*\bcardLine1\b[^"]*"[^>]*>([\s\S]*?)<\/div>/g;
+  const titles = [];
+  while ((m = titleRe.exec(html)) !== null) {
+    const txt = m[1].replace(/<[^>]+>/g, "").trim();
+    if (txt)
+      titles.push(txt);
+  }
+  if (titles.length > 0)
+    return titles.join("\n");
+  return "";
 }

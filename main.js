@@ -611,7 +611,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       const end = m.index + m[0].length;
       if (items.some((it) => start < it.cit.end && end > it.cit.start))
         continue;
-      const query = `it${vol} "${title}"`;
+      const query = `it${vol} "${title}" \xB6${para}`;
       const url = buildWolUrl(query);
       const fullRef = cleanText.slice(start, end).replace(/_/g, "").trim();
       items.push({ cit: { text: fullRef, start, end: start + fullRef.length }, query, url });

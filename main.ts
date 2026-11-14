@@ -133,7 +133,7 @@ export default class WolTextPlugin extends Plugin {
             const start = m.index;
             const end = m.index + m[0].length;
             if (items.some(it => start < it.cit.end && end > it.cit.start)) continue;
-            const query = `it${vol} "${title}"`;
+            const query = `it${vol} "${title}" \u00B6${para}`;
             const url = buildWolUrl(query);
             const fullRef = cleanText.slice(start, end).replace(/_/g, '').trim();
             items.push({ cit: { text: fullRef, start, end: start + fullRef.length }, query, url });

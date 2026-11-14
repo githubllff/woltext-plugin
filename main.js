@@ -648,6 +648,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     for (let i = 0; i < lines.length; i++) {
       out.push(lines[i]);
       if (byLine[i]) {
+        out.push("");
         for (const t of byLine[i]) {
           out.push(t);
         }

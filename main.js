@@ -717,7 +717,7 @@ function extractText(html) {
   const paras = [];
   let m;
   while ((m = paraRe.exec(html)) !== null) {
-    const txt = m[2].replace(/<a[\s\S]*?<\/a>/g, "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    const txt = m[2].replace(/<a[^>]*>(\+|\*|\[\w\])<\/a>/g, "").replace(/<a[^>]*>([\s\S]*?)<\/a>/g, "$1").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
     if (txt)
       paras.push(txt);
   }

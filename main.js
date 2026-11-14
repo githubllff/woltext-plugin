@@ -660,7 +660,13 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    new import_obsidian.Notice(`Found ${items.length} citation(s).\\n${items.map((i) => i.query + " => " + i.url).join("\\n")}`);
+    const debugInfo = `Found ${items.length} citation(s).\\n${items.map((i) => i.query + " => " + i.url).join("\\n")}`;
+    new import_obsidian.Notice(debugInfo.slice(0, 200));
+    try {
+      await this.app.vault.adapter.write("woltext_debug.txt", debugInfo);
+    } catch (e) {
+      console.error("debug write failed", e);
+    }
     const fetched = [];
     for (const item of items) {
       try {

@@ -188,7 +188,11 @@ export default class WolTextPlugin extends Plugin {
 
         items.sort((a, b) => a.cit.start - b.cit.start);
 
-        new Notice(`Found ${items.length} citation(s).\\n${items.map(i => i.query + ' => ' + i.url).join('\\n')}`);
+        const debugInfo = `Found ${items.length} citation(s).\\n${items.map(i => i.query + ' => ' + i.url).join('\\n')}`;
+        new Notice(debugInfo.slice(0, 200));
+        try {
+            await this.app.vault.adapter.write('woltext_debug.txt', debugInfo);
+        } catch (e) { console.error('debug write failed', e); }
 
         const fetched: { cit: Item['cit']; text: string }[] = [];
         for (const item of items) {

@@ -494,7 +494,14 @@ function buildWolUrl(query) {
 }
 
 // main.ts
+var DEFAULT_SETTINGS = {
+  outputFormat: "blockquote"
+};
 var WolTextPlugin = class extends import_obsidian.Plugin {
+  constructor() {
+    super(...arguments);
+    this.settings = DEFAULT_SETTINGS;
+  }
   async onload() {
     await this.loadSettings();
     try {
@@ -509,15 +516,20 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
         await this.processActiveNote();
       }
     });
+    this.addSettingTab(new WolTextSettingTab(this.app, this));
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
-    new import_obsidian.Notice("WOL Text Inserter v0.3.0 loaded");
   }
   onunload() {
     resetEngine();
   }
   async loadSettings() {
+    const saved = await this.loadData();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
+  }
+  async saveSettings() {
+    await this.saveData(this.settings);
   }
   async processActiveNote() {
     const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
@@ -607,10 +619,10 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
           try {
             const artRes = await (0, import_obsidian.requestUrl)({ url: lastUrl });
             const artText = extractText(artRes.text);
-            text = artText || text || articleUrls.map((u) => u).join("\\n");
+            text = artText || text || extractArticleTitles(res.text).join("\n");
           } catch (e) {
             console.error("Article fetch failed", lastUrl, e);
-            text = extractArticleTitles(res.text).join("\\n") || text;
+            text = extractArticleTitles(res.text).join("\n") || text;
           }
         }
         fetched.push({ cit: item.cit, text: text || "(no text found)" });
@@ -641,14 +653,28 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       const li = lineIndexForOffset(f.cit.start);
       if (!byLine[li])
         byLine[li] = [];
-      const indented = f.text.split("\n").map((ln, i) => i === 0 ? `> ${f.cit.text}: ${ln}` : `> ${ln}`).join("\n");
-      byLine[li].push(indented);
+      const format = this.settings.outputFormat;
+      let headerPrefix = ">";
+      let bodyPrefix = ">";
+      if (format === "indented") {
+        headerPrefix = "	";
+        bodyPrefix = "	";
+      } else if (format === "callout") {
+        headerPrefix = "> [!quote]+";
+        bodyPrefix = ">";
+      }
+      const formatted = f.text.split("\n").map((ln, i) => {
+        if (i === 0)
+          return `${headerPrefix} ${f.cit.text}: ${ln}`;
+        return `${bodyPrefix} ${ln}`;
+      }).join("\n");
+      byLine[li].push("");
+      byLine[li].push(formatted);
     }
     const out = [];
     for (let i = 0; i < lines.length; i++) {
       out.push(lines[i]);
       if (byLine[i]) {
-        out.push("");
         for (const t of byLine[i]) {
           out.push(t);
         }
@@ -735,3 +761,18 @@ function extractText(html) {
     return titles.join("\n");
   return "";
 }
+var WolTextSettingTab = class extends import_obsidian.PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    containerEl.createEl("h2", { text: "WOL Text Inserter" });
+    new import_obsidian.Setting(containerEl).setName("Output format").setDesc("How inserted references are formatted in the note.").addDropdown((drop) => drop.addOption("blockquote", "Blockquote (> )").addOption("indented", "Indented (tab)").addOption("callout", "Collapsible callout").setValue(this.plugin.settings.outputFormat).onChange(async (value) => {
+      this.plugin.settings.outputFormat = value;
+      await this.plugin.saveSettings();
+    }));
+  }
+};

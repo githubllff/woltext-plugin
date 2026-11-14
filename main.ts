@@ -1,6 +1,14 @@
-import { Plugin, MarkdownView, requestUrl, Notice } from 'obsidian';
+import { Plugin, MarkdownView, requestUrl, Notice, PluginSettingTab, Setting, App } from 'obsidian';
 import { initEngine, isEngineReady, resetEngine, findCitations, buildWolUrl } from './engine-wrapper';
 import { Citation } from './types';
+
+interface WolTextSettings {
+    outputFormat: 'blockquote' | 'indented' | 'callout';
+}
+
+const DEFAULT_SETTINGS: WolTextSettings = {
+    outputFormat: 'blockquote',
+};
 
 interface Item {
     cit: { text: string; start: number; end: number };
@@ -9,6 +17,8 @@ interface Item {
 }
 
 export default class WolTextPlugin extends Plugin {
+    settings: WolTextSettings = DEFAULT_SETTINGS;
+
     async onload() {
         await this.loadSettings();
         try {
@@ -23,17 +33,24 @@ export default class WolTextPlugin extends Plugin {
                 await this.processActiveNote();
             },
         });
+        this.addSettingTab(new WolTextSettingTab(this.app, this));
         if (!isEngineReady()) {
             console.warn('WOL Text Inserter: engine not ready');
         }
-        new Notice('WOL Text Inserter v0.3.0 loaded');
     }
 
     onunload() {
         resetEngine();
     }
 
-    private async loadSettings() {}
+    async loadSettings() {
+        const saved = await this.loadData() as Partial<WolTextSettings> | null;
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
+    }
+
+    async saveSettings() {
+        await this.saveData(this.settings);
+    }
 
     private async processActiveNote() {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -120,8 +137,6 @@ export default class WolTextPlugin extends Plugin {
             try {
                 const res = await requestUrl({ url: item.url });
                 let text = extractText(res.text);
-                // If the lookup returned a list of articles (Insight page ranges)
-                // instead of inline paragraph text, fetch the LAST article listed.
                 const articleUrls = extractArticleUrls(res.text);
                 const hasParagraphs = extractHasParagraphs(res.text);
                 if (articleUrls.length > 0 && !hasParagraphs) {
@@ -129,10 +144,10 @@ export default class WolTextPlugin extends Plugin {
                     try {
                         const artRes = await requestUrl({ url: lastUrl });
                         const artText = extractText(artRes.text);
-                        text = artText || text || articleUrls.map(u => u).join('\\n');
+                        text = artText || text || extractArticleTitles(res.text).join('\n');
                     } catch (e) {
                         console.error('Article fetch failed', lastUrl, e);
-                        text = extractArticleTitles(res.text).join('\\n') || text;
+                        text = extractArticleTitles(res.text).join('\n') || text;
                     }
                 }
                 fetched.push({ cit: item.cit, text: text || '(no text found)' });
@@ -161,15 +176,23 @@ export default class WolTextPlugin extends Plugin {
         for (const f of fetched) {
             const li = lineIndexForOffset(f.cit.start);
             if (!byLine[li]) byLine[li] = [];
-            const indented = f.text.split('\n').map((ln, i) => i === 0 ? `> ${f.cit.text}: ${ln}` : `> ${ln}`).join('\n');
-            byLine[li].push(indented);
+            const format = this.settings.outputFormat;
+            let headerPrefix = '>';
+            let bodyPrefix = '>';
+            if (format === 'indented') { headerPrefix = '\t'; bodyPrefix = '\t'; }
+            else if (format === 'callout') { headerPrefix = '> [!quote]+'; bodyPrefix = '>'; }
+            const formatted = f.text.split('\n').map((ln, i) => {
+                if (i === 0) return `${headerPrefix} ${f.cit.text}: ${ln}`;
+                return `${bodyPrefix} ${ln}`;
+            }).join('\n');
+            byLine[li].push('');
+            byLine[li].push(formatted);
         }
 
         const out: string[] = [];
         for (let i = 0; i < lines.length; i++) {
             out.push(lines[i]);
             if (byLine[i]) {
-                out.push('');
                 for (const t of byLine[i]) {
                     out.push(t);
                 }
@@ -238,8 +261,6 @@ function extractArticleTitles(html: string): string[] {
 }
 
 function extractText(html: string): string {
-    // Use regex instead of DOMParser (more robust across environments)
-    // 1. Scripture/publication paragraph text
     const paraRe = /<p[^>]*class="[^"]*\b(sl|sz|sb)\b[^"]*"[^>]*>([\s\S]*?)<\/p>/g;
     const paras: string[] = [];
     let m: RegExpExecArray | null;
@@ -249,7 +270,6 @@ function extractText(html: string): string {
     }
     if (paras.length > 0) return paras.join('\n');
 
-    // 2. Multi-article Insight pages: extract article titles
     const titleRe = /class="[^"]*\bcardLine1\b[^"]*"[^>]*>([\s\S]*?)<\/div>/g;
     const titles: string[] = [];
     while ((m = titleRe.exec(html)) !== null) {
@@ -259,4 +279,29 @@ function extractText(html: string): string {
     if (titles.length > 0) return titles.join('\n');
 
     return '';
+}
+
+class WolTextSettingTab extends PluginSettingTab {
+    plugin: WolTextPlugin;
+    constructor(app: App, plugin: WolTextPlugin) {
+        super(app, plugin);
+        this.plugin = plugin;
+    }
+    display(): void {
+        const { containerEl } = this;
+        containerEl.empty();
+        containerEl.createEl('h2', { text: 'WOL Text Inserter' });
+        new Setting(containerEl)
+            .setName('Output format')
+            .setDesc('How inserted references are formatted in the note.')
+            .addDropdown(drop => drop
+                .addOption('blockquote', 'Blockquote (> )')
+                .addOption('indented', 'Indented (tab)')
+                .addOption('callout', 'Collapsible callout')
+                .setValue(this.plugin.settings.outputFormat)
+                .onChange(async (value) => {
+                    this.plugin.settings.outputFormat = value as 'blockquote' | 'indented' | 'callout';
+                    await this.plugin.saveSettings();
+                }));
+    }
 }

@@ -124,8 +124,7 @@ export default class WolTextPlugin extends Plugin {
         }
 
         // Insight title references (e.g. it "Peace" pilcrow 3) and Meeting Workbook articles (e.g. ijwbv article 50)
-        const pilcrow = '[\\u00B6\\u00A7]';
-        const titleRefRe = new RegExp('\\bit(-[12])?\\s+[\\""\u201C\u201D«»]?([A-Za-z][A-Za-z\\s\'-]+?)[\\""\u201C\u201D«»]?\\s*(?:' + pilcrow + '|par\\.?|p\\.?)\\s*(\\d+)', 'g');
+        const titleRefRe = new RegExp('\\bit(-[12])?\\s+[\\""\u201C\u201D«»]?([A-Za-z][A-Za-z\\s\'-]+?)[\\""\u201C\u201D«»]?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+)', 'g');
         while ((m = titleRefRe.exec(cleanText)) !== null) {
             const vol = m[1] || '-2';
             const title = m[2].trim();

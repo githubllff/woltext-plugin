@@ -601,8 +601,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
         searchFrom = idx + rawVt.trim().length;
       }
     }
-    const pilcrow = "[\\u00B6\\u00A7]";
-    const titleRefRe = new RegExp(`\\bit(-[12])?\\s+[\\""\u201C\u201D\xAB\xBB]?([A-Za-z][A-Za-z\\s'-]+?)[\\""\u201C\u201D\xAB\xBB]?\\s*(?:` + pilcrow + "|par\\.?|p\\.?)\\s*(\\d+)", "g");
+    const titleRefRe = new RegExp(`\\bit(-[12])?\\s+[\\""\u201C\u201D\xAB\xBB]?([A-Za-z][A-Za-z\\s'-]+?)[\\""\u201C\u201D\xAB\xBB]?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+)`, "g");
     while ((m = titleRefRe.exec(cleanText)) !== null) {
       const vol = m[1] || "-2";
       const title = m[2].trim();

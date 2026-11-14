@@ -119,7 +119,22 @@ export default class WolTextPlugin extends Plugin {
         for (const item of items) {
             try {
                 const res = await requestUrl({ url: item.url });
-                const text = extractText(res.text);
+                let text = extractText(res.text);
+                // If the lookup returned a list of articles (Insight page ranges)
+                // instead of inline paragraph text, fetch the LAST article listed.
+                const articleUrls = extractArticleUrls(res.text);
+                const hasParagraphs = extractHasParagraphs(res.text);
+                if (articleUrls.length > 0 && !hasParagraphs) {
+                    const lastUrl = articleUrls[articleUrls.length - 1];
+                    try {
+                        const artRes = await requestUrl({ url: lastUrl });
+                        const artText = extractText(artRes.text);
+                        text = artText || text || articleUrls.map(u => u).join('\\n');
+                    } catch (e) {
+                        console.error('Article fetch failed', lastUrl, e);
+                        text = extractArticleTitles(res.text).join('\\n') || text;
+                    }
+                }
                 fetched.push({ cit: item.cit, text: text || '(no text found)' });
             } catch (e) {
                 console.error('Fetch failed', item.url, e);
@@ -193,6 +208,32 @@ export default class WolTextPlugin extends Plugin {
         }
         return { query: cit.text, fullRef: cit.text };
     }
+}
+
+function extractHasParagraphs(html: string): boolean {
+    return /<p[^>]*class="[^"]*\b(sl|sz|sb)\b[^"]*"/.test(html);
+}
+
+function extractArticleUrls(html: string): string[] {
+    const urls: string[] = [];
+    const re = /<a[^>]*href="(\/en\/wol\/d\/r1\/lp-e\/\d+)[^"]*"[^>]*>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+        const u = 'https://wol.jw.org' + m[1];
+        if (!urls.includes(u)) urls.push(u);
+    }
+    return urls;
+}
+
+function extractArticleTitles(html: string): string[] {
+    const re = /class="[^"]*\bcardLine1\b[^"]*"[^>]*>([\s\S]*?)<\/div>/g;
+    const titles: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+        const txt = m[1].replace(/<[^>]+>/g, '').trim();
+        if (txt) titles.push(txt);
+    }
+    return titles;
 }
 
 function extractText(html: string): string {

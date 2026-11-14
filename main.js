@@ -670,14 +670,14 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     const fetched = [];
     for (const item of items) {
       try {
-        const res = await (0, import_obsidian.requestUrl)({ url: item.url, headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" } });
+        const res = await (0, import_obsidian.requestUrl)({ url: item.url });
         let text = extractText(res.text);
         const articleUrls = extractArticleUrls(res.text);
         const hasParagraphs = extractHasParagraphs(res.text);
         if (articleUrls.length > 0 && !hasParagraphs) {
           const lastUrl = articleUrls[articleUrls.length - 1];
           try {
-            const artRes = await (0, import_obsidian.requestUrl)({ url: lastUrl, headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" } });
+            const artRes = await (0, import_obsidian.requestUrl)({ url: lastUrl });
             const artText = extractText(artRes.text);
             text = artText || text || extractArticleTitles(res.text).join("\n");
           } catch (e) {

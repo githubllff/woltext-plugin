@@ -85,6 +85,36 @@ export default class WolTextPlugin extends Plugin {
                 const cleanFullRef = fullRef.replace(/_/g, '');
                 const normCit = { text: cleanFullRef, start: origStart, end: origStart + cleanFullRef.length };
                 items.push({ cit: normCit, query, url });
+
+                // Publication shorthand runs: "w25.02 3 ¶7; 7 ¶18" — the first
+                // is captured by inrefens, subsequent ones inherit the root.
+                const root = cleanCit.text.replace(/\s+\d.*$/, '').trim();
+                const tail = cleanText.slice(cit.end);
+                const shortRe = /^\s*[;,]\s*(\d+)\s*(?:[^\w\s]+|par\.?|p\.?)\s*(\d+)/;
+                let scan = tail;
+                let offset = cit.end;
+                while (true) {
+                    const mm = scan.match(shortRe);
+                    if (!mm) break;
+                    const page = mm[1];
+                    const para = mm[2];
+                    const fullMatch = mm[0];
+                    const shStart = offset + (scan.indexOf(fullMatch));
+                    const shEnd = shStart + fullMatch.trim().length;
+                    // advance past leading whitespace
+                    const trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
+                    const trimmedEnd = trimmedStart + fullMatch.trim().length;
+                    const origShStart = cleanToOrig[trimmedStart];
+                    const origShEnd = cleanToOrig[trimmedEnd - 1] + 1;
+                    if (!items.some(it => origShStart < it.cit.end && origShEnd > it.cit.start)) {
+                        const q = `${root} ${page} ${para}`;
+                        const u = buildWolUrl(q);
+                        const display = cleanText.slice(trimmedStart, trimmedEnd).replace(/_/g, '').trim();
+                        items.push({ cit: { text: display, start: origShStart, end: origShStart + display.length }, query: q, url: u });
+                    }
+                    offset = trimmedEnd;
+                    scan = cleanText.slice(offset);
+                }
             }
         }
 

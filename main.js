@@ -517,6 +517,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       }
     });
     this.addSettingTab(new WolTextSettingTab(this.app, this));
+    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 17:09:52"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -551,6 +552,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     }
     const cleanText = original.replace(/_/g, "");
     const items = [];
+    const skipped = [];
     const scriptureRunRe = /\b(?!(?:Read|See|Compare|And|But|Or|For|The|In|On|At|To|Of|A|An)\b)(\d{1,2}\s*)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\.?)\s+(\d{1,3}:\d{1,3}(?:-\d{1,3})?(?:\s*[;,]\s*\d{1,3}(?![A-Za-z])(?::\d{1,3})?(?:-\d{1,3})?)*)/g;
     let m;
     while ((m = scriptureRunRe.exec(cleanText)) !== null) {
@@ -593,8 +595,10 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       for (const cit of pubCits) {
         const origStart = cleanToOrig[cit.start];
         const origEnd = cleanToOrig[cit.end - 1] + 1;
-        if (items.some((it) => origStart < it.cit.end && origEnd > it.cit.start))
+        if (items.some((it) => origStart < it.cit.end && origEnd > it.cit.start)) {
+          skipped.push(`publication ${cit.text} (overlapped a scripture match)`);
           continue;
+        }
         const cleanCit = { ...cit, text: cit.text.replace(/_/g, "") };
         const { query, fullRef } = this.buildPubQuery(cleanText, cleanCit);
         const url = buildWolUrl(query);
@@ -605,7 +609,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
         items.push({ cit: normCit, query, url });
         const root = cleanCit.text.replace(/\s+\d.*$/, "").trim();
         const tail = cleanText.slice(cit.end);
-        const shortRe = /^\s*[;,]\s*(\d+)\s*(?:[^\w\s]+|par\.?|p\.?)\s*(\d+)/;
+        const shortRe = /^\s*[;,]\s*(\d+)\s*(?:[^\w\s]+|pars?\.?|p\.?)\s*(\d+)(?:\s*[-\u2013]\s*(\d+))?/;
         let scan = tail;
         let offset = cit.end;
         while (true) {
@@ -614,6 +618,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
             break;
           const page = mm[1];
           const para = mm[2];
+          const paraEnd = mm[3];
           const fullMatch = mm[0];
           const shStart = offset + scan.indexOf(fullMatch);
           const trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
@@ -621,10 +626,12 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
           const origShStart = cleanToOrig[trimmedStart];
           const origShEnd = cleanToOrig[trimmedEnd - 1] + 1;
           if (!items.some((it) => origShStart < it.cit.end && origShEnd > it.cit.start)) {
-            const q = `${root} ${page} ${para}`;
+            const q = paraEnd ? `${root} ${page} ${para}-${paraEnd}` : `${root} ${page} ${para}`;
             const u = buildWolUrl(q);
             const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).replace(/^\s*[;,]\s*/, "").trim()}`.replace(/_/g, "").trim();
-            items.push({ cit: { text: display, start: origShStart, end: origShStart + display.length }, query: q, url: u });
+            items.push({ cit: { text: display, start: origShStart, end: origShEnd }, query: q, url: u });
+          } else {
+            skipped.push(`shorthand ${fullMatch.trim()} (overlapped another citation)`);
           }
           offset = trimmedEnd;
           scan = cleanText.slice(offset);
@@ -640,8 +647,10 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       const cleanEnd = m.index + m[0].length;
       const start = cleanToOrig[cleanStart];
       const end = cleanToOrig[cleanEnd - 1] + 1;
-      if (items.some((it) => start < it.cit.end && end > it.cit.start))
+      if (items.some((it) => start < it.cit.end && end > it.cit.start)) {
+        skipped.push(`title ref ${m[0]} (overlapped another citation)`);
         continue;
+      }
       const query = `it${vol} "${title}" \xB6${para}`;
       const url = buildWolUrl(query);
       const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, "").trim();
@@ -654,8 +663,10 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       const cleanEnd = m.index + m[0].length;
       const start = cleanToOrig[cleanStart];
       const end = cleanToOrig[cleanEnd - 1] + 1;
-      if (items.some((it) => start < it.cit.end && end > it.cit.start))
+      if (items.some((it) => start < it.cit.end && end > it.cit.start)) {
+        skipped.push(`ijwbv ${num} (overlapped another citation)`);
         continue;
+      }
       const query = `ijwbv ${num}`;
       const url = buildWolUrl(query);
       const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, "").trim() || `ijwbv ${num}`;
@@ -666,37 +677,48 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const debugInfo = `Found ${items.length} citation(s).\\n${items.map((i) => i.query + " => " + i.url).join("\\n")}`;
-    new import_obsidian.Notice(debugInfo.slice(0, 200));
-    try {
-      await this.app.vault.adapter.write("woltext_debug.txt", debugInfo);
-    } catch (e) {
-      console.error("debug write failed", e);
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 17:09:52"})`, `Citations found: ${items.length}`, ""];
+    if (skipped.length > 0) {
+      diag.push("Skipped (overlap guard):");
+      for (const s of skipped)
+        diag.push("  " + s);
+      diag.push("");
     }
+    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-14 17:09:52"}`);
     const fetched = [];
     for (const item of items) {
       try {
-        const res = await (0, import_obsidian.requestUrl)({ url: item.url });
-        let text = extractText(res.text);
+        const html = await fetchPage(item.url);
+        let text = extractText(html);
         if (!text) {
-          const articleUrls = extractArticleUrls(res.text);
+          const articleUrls = extractArticleUrls(html);
           if (articleUrls.length > 0) {
             const lastUrl = articleUrls[articleUrls.length - 1];
             try {
-              const artRes = await (0, import_obsidian.requestUrl)({ url: lastUrl });
-              text = extractText(artRes.text);
+              const artHtml = await fetchPage(lastUrl);
+              text = extractText(artHtml);
             } catch (e) {
               console.error("Article fetch failed", lastUrl, e);
             }
           }
         }
         if (!text)
-          text = extractArticleTitles(res.text).join("\n");
+          text = extractArticleTitles(html).join("\n");
+        const paraCount = text ? text.split("\n").length : 0;
+        diag.push(`${item.query}  =>  ${item.url}`);
+        diag.push(`    paragraphs=${paraCount} | ${(text || "(no text)").slice(0, 100).replace(/\n/g, " / ")}`);
         fetched.push({ cit: item.cit, text: text || "(no text found)" });
       } catch (e) {
         console.error("Fetch failed", item.url, e);
+        diag.push(`${item.query}  =>  ${item.url}`);
+        diag.push(`    FETCH ERROR: ${String(e)}`);
         fetched.push({ cit: item.cit, text: "(fetch error)" });
       }
+    }
+    try {
+      await this.app.vault.adapter.write("woltext_debug.txt", diag.join("\n"));
+    } catch (e) {
+      console.error("debug write failed", e);
     }
     const lines = original.split("\n");
     const lineStarts = [];
@@ -784,6 +806,24 @@ ${bodyLines.join("\n")}`);
     return { query: cit.text, fullRef: cit.text };
   }
 };
+async function fetchPage(url) {
+  let last = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await (0, import_obsidian.requestUrl)({ url });
+      const text = res.text || "";
+      last = text;
+      const blocked = text.length < 4e3 || /awsWafCookieDomainList|ERROR: The request could not be satisfied|Request blocked/i.test(text);
+      if (!blocked)
+        return text;
+      console.warn(`WOL Text Inserter: suspicious response (attempt ${attempt + 1}) for ${url}`);
+    } catch (e) {
+      console.error("WOL Text Inserter: fetch failed", url, e);
+    }
+    await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+  }
+  return last;
+}
 function lookupScope(html) {
   const start = html.indexOf('class="lookupResults"');
   if (start === -1)

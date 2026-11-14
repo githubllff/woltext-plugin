@@ -2,6 +2,8 @@
 import { initEngine, isEngineReady, resetEngine, findCitations, buildWolUrl } from './engine-wrapper';
 import { Citation } from './types';
 
+declare const __BUILD_TIME__: string;
+
 interface WolTextSettings {
     outputFormat: 'blockquote' | 'indented' | 'callout';
 }
@@ -34,6 +36,7 @@ export default class WolTextPlugin extends Plugin {
             },
         });
         this.addSettingTab(new WolTextSettingTab(this.app, this));
+        new Notice(`WOL Text Inserter ${this.manifest.version} (build ${__BUILD_TIME__}) loaded`);
         if (!isEngineReady()) {
             console.warn('WOL Text Inserter: engine not ready');
         }
@@ -73,6 +76,7 @@ export default class WolTextPlugin extends Plugin {
         const cleanText = original.replace(/_/g, '');
 
         const items: Item[] = [];
+        const skipped: string[] = [];
 
         // 1. Scripture detection FIRST (so "Pr 3:27" isn't consumed by inrefens
         //    treating "Pr" as a publication root).
@@ -119,7 +123,10 @@ export default class WolTextPlugin extends Plugin {
             for (const cit of pubCits) {
                 const origStart = cleanToOrig[cit.start];
                 const origEnd = cleanToOrig[cit.end - 1] + 1;
-                if (items.some(it => origStart < it.cit.end && origEnd > it.cit.start)) continue;
+                if (items.some(it => origStart < it.cit.end && origEnd > it.cit.start)) {
+                    skipped.push(`publication ${cit.text} (overlapped a scripture match)`);
+                    continue;
+                }
                 const cleanCit = { ...cit, text: cit.text.replace(/_/g, '') } as Citation;
                 const { query, fullRef } = this.buildPubQuery(cleanText, cleanCit);
                 const url = buildWolUrl(query);
@@ -130,10 +137,10 @@ export default class WolTextPlugin extends Plugin {
                 const normCit = { text: cleanFullRef, start: origStart, end: origFullEnd };
                 items.push({ cit: normCit, query, url });
 
-                // Publication shorthand runs: "w25.02 3 ¶7; 7 ¶18"
+                // Publication shorthand runs: "w25.02 3 ¶7; 7 ¶18" or "w16.11 5 ¶4-6; 8 ¶15-19"
                 const root = cleanCit.text.replace(/\s+\d.*$/, '').trim();
                 const tail = cleanText.slice(cit.end);
-                const shortRe = /^\s*[;,]\s*(\d+)\s*(?:[^\w\s]+|par\.?|p\.?)\s*(\d+)/;
+                const shortRe = /^\s*[;,]\s*(\d+)\s*(?:[^\w\s]+|pars?\.?|p\.?)\s*(\d+)(?:\s*[-\u2013]\s*(\d+))?/;
                 let scan = tail;
                 let offset = cit.end;
                 while (true) {
@@ -141,6 +148,7 @@ export default class WolTextPlugin extends Plugin {
                     if (!mm) break;
                     const page = mm[1];
                     const para = mm[2];
+                    const paraEnd = mm[3];
                     const fullMatch = mm[0];
                     const shStart = offset + (scan.indexOf(fullMatch));
                     const trimmedStart = shStart + (fullMatch.length - fullMatch.trimStart().length);
@@ -148,10 +156,12 @@ export default class WolTextPlugin extends Plugin {
                     const origShStart = cleanToOrig[trimmedStart];
                     const origShEnd = cleanToOrig[trimmedEnd - 1] + 1;
                     if (!items.some(it => origShStart < it.cit.end && origShEnd > it.cit.start)) {
-                        const q = `${root} ${page} ${para}`;
+                        const q = paraEnd ? `${root} ${page} ${para}-${paraEnd}` : `${root} ${page} ${para}`;
                         const u = buildWolUrl(q);
                         const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).replace(/^\s*[;,]\s*/, '').trim()}`.replace(/_/g, '').trim();
-                        items.push({ cit: { text: display, start: origShStart, end: origShStart + display.length }, query: q, url: u });
+                        items.push({ cit: { text: display, start: origShStart, end: origShEnd }, query: q, url: u });
+                    } else {
+                        skipped.push(`shorthand ${fullMatch.trim()} (overlapped another citation)`);
                     }
                     offset = trimmedEnd;
                     scan = cleanText.slice(offset);
@@ -170,7 +180,10 @@ export default class WolTextPlugin extends Plugin {
             // Map back to ORIGINAL text offsets (other citations use those).
             const start = cleanToOrig[cleanStart];
             const end = cleanToOrig[cleanEnd - 1] + 1;
-            if (items.some(it => start < it.cit.end && end > it.cit.start)) continue;
+            if (items.some(it => start < it.cit.end && end > it.cit.start)) {
+                skipped.push(`title ref ${m[0]} (overlapped another citation)`);
+                continue;
+            }
             const query = `it${vol} "${title}" \u00B6${para}`;
             const url = buildWolUrl(query);
             const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, '').trim();
@@ -184,7 +197,10 @@ export default class WolTextPlugin extends Plugin {
             const cleanEnd = m.index + m[0].length;
             const start = cleanToOrig[cleanStart];
             const end = cleanToOrig[cleanEnd - 1] + 1;
-            if (items.some(it => start < it.cit.end && end > it.cit.start)) continue;
+            if (items.some(it => start < it.cit.end && end > it.cit.start)) {
+                skipped.push(`ijwbv ${num} (overlapped another citation)`);
+                continue;
+            }
             const query = `ijwbv ${num}`;
             const url = buildWolUrl(query);
             const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, '').trim() || `ijwbv ${num}`;
@@ -198,38 +214,49 @@ export default class WolTextPlugin extends Plugin {
 
         items.sort((a, b) => a.cit.start - b.cit.start);
 
-        const debugInfo = `Found ${items.length} citation(s).\\n${items.map(i => i.query + ' => ' + i.url).join('\\n')}`;
-        new Notice(debugInfo.slice(0, 200));
-        try {
-            await this.app.vault.adapter.write('woltext_debug.txt', debugInfo);
-        } catch (e) { console.error('debug write failed', e); }
+        const diag: string[] = [`WOL Text Inserter ${this.manifest.version} (build ${__BUILD_TIME__})`, `Citations found: ${items.length}`, ''];
+        if (skipped.length > 0) {
+            diag.push('Skipped (overlap guard):');
+            for (const s of skipped) diag.push('  ' + s);
+            diag.push('');
+        }
+        new Notice(`Found ${items.length} citation(s). Build ${__BUILD_TIME__}`);
 
         const fetched: { cit: Item['cit']; text: string }[] = [];
         for (const item of items) {
             try {
-                const res = await requestUrl({ url: item.url });
-                let text = extractText(res.text);
+                const html = await fetchPage(item.url);
+                let text = extractText(html);
                 if (!text) {
                     // Lookup returned only article cards (e.g. Insight page ranges,
                     // meeting workbook articles) - follow the last article link.
-                    const articleUrls = extractArticleUrls(res.text);
+                    const articleUrls = extractArticleUrls(html);
                     if (articleUrls.length > 0) {
                         const lastUrl = articleUrls[articleUrls.length - 1];
                         try {
-                            const artRes = await requestUrl({ url: lastUrl });
-                            text = extractText(artRes.text);
+                            const artHtml = await fetchPage(lastUrl);
+                            text = extractText(artHtml);
                         } catch (e) {
                             console.error('Article fetch failed', lastUrl, e);
                         }
                     }
                 }
-                if (!text) text = extractArticleTitles(res.text).join('\n');
+                if (!text) text = extractArticleTitles(html).join('\n');
+                const paraCount = text ? text.split('\n').length : 0;
+                diag.push(`${item.query}  =>  ${item.url}`);
+                diag.push(`    paragraphs=${paraCount} | ${(text || '(no text)').slice(0, 100).replace(/\n/g, ' / ')}`);
                 fetched.push({ cit: item.cit, text: text || '(no text found)' });
             } catch (e) {
                 console.error('Fetch failed', item.url, e);
+                diag.push(`${item.query}  =>  ${item.url}`);
+                diag.push(`    FETCH ERROR: ${String(e)}`);
                 fetched.push({ cit: item.cit, text: '(fetch error)' });
             }
         }
+
+        try {
+            await this.app.vault.adapter.write('woltext_debug.txt', diag.join('\n'));
+        } catch (e) { console.error('debug write failed', e); }
 
         const lines = original.split('\n');
         const lineStarts: number[] = [];
@@ -314,6 +341,25 @@ export default class WolTextPlugin extends Plugin {
         }
         return { query: cit.text, fullRef: cit.text };
     }
+}
+
+async function fetchPage(url: string): Promise<string> {
+    let last = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            const res = await requestUrl({ url });
+            const text = res.text || '';
+            last = text;
+            const blocked = text.length < 4000
+                || /awsWafCookieDomainList|ERROR: The request could not be satisfied|Request blocked/i.test(text);
+            if (!blocked) return text;
+            console.warn(`WOL Text Inserter: suspicious response (attempt ${attempt + 1}) for ${url}`);
+        } catch (e) {
+            console.error('WOL Text Inserter: fetch failed', url, e);
+        }
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+    }
+    return last;
 }
 
 function lookupScope(html: string): string {

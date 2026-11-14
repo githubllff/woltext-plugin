@@ -14,6 +14,7 @@ const ctx = await esbuild.context({
   treeShaking: true,
   outfile: 'main.js',
   loader: { '.wasm': 'binary' },
+  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString().replace('T', ' ').slice(0, 19)) },
 });
 
 if (prod) {

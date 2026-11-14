@@ -633,7 +633,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    new import_obsidian.Notice(`Found ${items.length} citation(s). Fetching text...`);
+    new import_obsidian.Notice(`Found ${items.length} citation(s). Fetching text...\\n${items.map((i) => i.query).join(", ")}`);
     const fetched = [];
     for (const item of items) {
       try {

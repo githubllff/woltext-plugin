@@ -158,7 +158,7 @@ export default class WolTextPlugin extends Plugin {
 
         items.sort((a, b) => a.cit.start - b.cit.start);
 
-        new Notice(`Found ${items.length} citation(s). Fetching text...`);
+        new Notice(`Found ${items.length} citation(s). Fetching text...\\n${items.map(i => i.query).join(', ')}`);
 
         const fetched: { cit: Item['cit']; text: string }[] = [];
         for (const item of items) {

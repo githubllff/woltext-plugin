@@ -903,6 +903,7 @@ function createWolTextEditorPlugin() {
           e.preventDefault();
           e.stopPropagation();
           window.open(url, "_blank");
+          return true;
         }
       }
     }
@@ -1146,7 +1147,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       }
     });
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 21:17:59"}) loaded`);
+    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 21:22:28"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -1192,14 +1193,14 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 21:17:59"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 21:22:28"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-14 21:17:59"}`);
+    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-14 21:22:28"}`);
     const fetched = [];
     for (const item of items) {
       try {

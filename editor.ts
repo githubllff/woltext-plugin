@@ -251,6 +251,7 @@ export function createWolTextEditorPlugin() {
                     e.preventDefault();
                     e.stopPropagation();
                     window.open(url, '_blank');
+                    return true;
                 },
             },
         }

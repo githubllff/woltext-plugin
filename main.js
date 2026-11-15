@@ -1138,8 +1138,6 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       console.error("WOL Text Inserter: engine init failed", e);
     }
     setLivePublicationLinks(this.settings.linkPublications);
-    this.registerEditorExtension(createWolTextEditorPlugin());
-    this.registerMarkdownPostProcessor((el) => processReadingView(el));
     this.addCommand({
       id: "insert-wol-text",
       name: "Insert WOL text for citations in note",
@@ -1147,8 +1145,14 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
         await this.processActiveNote();
       }
     });
+    try {
+      this.registerEditorExtension(createWolTextEditorPlugin());
+      this.registerMarkdownPostProcessor((el) => processReadingView(el));
+    } catch (e) {
+      console.error("WOL Text Inserter: editor extension registration failed", e);
+    }
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-15 14:04:39"}) loaded`);
+    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-15 14:39:52"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -1197,14 +1201,14 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-15 14:04:39"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-15 14:39:52"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-15 14:04:39"}`);
+    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-15 14:39:52"}`);
     const fetched = [];
     for (const item of items) {
       try {

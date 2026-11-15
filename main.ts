@@ -34,8 +34,6 @@ export default class WolTextPlugin extends Plugin {
             console.error('WOL Text Inserter: engine init failed', e);
         }
         setLivePublicationLinks(this.settings.linkPublications);
-        this.registerEditorExtension(createWolTextEditorPlugin());
-        this.registerMarkdownPostProcessor((el) => processReadingView(el));
         this.addCommand({
             id: 'insert-wol-text',
             name: 'Insert WOL text for citations in note',
@@ -43,6 +41,12 @@ export default class WolTextPlugin extends Plugin {
                 await this.processActiveNote();
             },
         });
+        try {
+            this.registerEditorExtension(createWolTextEditorPlugin());
+            this.registerMarkdownPostProcessor((el) => processReadingView(el));
+        } catch (e) {
+            console.error('WOL Text Inserter: editor extension registration failed', e);
+        }
         this.addSettingTab(new WolTextSettingTab(this.app, this));
         new Notice(`WOL Text Inserter ${this.manifest.version} (build ${__BUILD_TIME__}) loaded`);
         if (!isEngineReady()) {

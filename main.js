@@ -498,7 +498,7 @@ function detectCitations(original) {
   const cleanChars = [];
   const cleanToOrig = [];
   const pushChar = (idx) => {
-    if (original[idx] === "_")
+    if (original[idx] === "_" || original[idx] === "*")
       return;
     cleanChars.push(original[idx]);
     cleanToOrig.push(idx);
@@ -560,7 +560,7 @@ function detectCitations(original) {
         searchFrom = idx + rawVt.trim().length;
         continue;
       }
-      const fullRef = `${book} ${token}`.replace(/_/g, "");
+      const fullRef = `${book} ${token}`.replace(/[_*]/g, "");
       const query = fullRef.replace(/,\s+/g, ",");
       const url = `https://wol.jw.org/en/wol/l/r1/lp-e?q=${encodeURIComponent(query)}`;
       items.push({ cit: { text: fullRef, start: origStart, end: origEnd }, query, url, isPub: false });
@@ -576,10 +576,10 @@ function detectCitations(original) {
         skipped.push(`publication ${cit.text} (overlapped a scripture match)`);
         continue;
       }
-      const cleanCit = { ...cit, text: cit.text.replace(/_/g, "") };
+      const cleanCit = { ...cit, text: cit.text.replace(/[_*]/g, "") };
       const { query, fullRef } = buildPubQuery(cleanText, cleanCit);
       const url = buildWolUrl(query);
-      const cleanFullRef = fullRef.replace(/_/g, "");
+      const cleanFullRef = fullRef.replace(/[_*]/g, "");
       const cleanFullEnd = Math.min(cit.start + fullRef.length, cleanText.length);
       const origFullEnd = cleanFullEnd > 0 ? cleanToOrig[cleanFullEnd - 1] + 1 : origEnd;
       const normCit = { text: cleanFullRef, start: origStart, end: origFullEnd };
@@ -607,7 +607,7 @@ function detectCitations(original) {
         if (!items.some((it) => origShStart < it.cit.end && origShEnd > it.cit.start)) {
           const q = paraEnd ? `${root} ${page} ${para}-${paraEnd}` : `${root} ${page} ${para}`;
           const u = buildWolUrl(q);
-          const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).trim()}`.replace(/_/g, "").trim();
+          const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).trim()}`.replace(/[_*]/g, "").trim();
           items.push({ cit: { text: display, start: origShStart, end: origShEnd }, query: q, url: u, isPub: true });
         } else {
           skipped.push(`shorthand ${fullMatch.trim()} (overlapped another citation)`);
@@ -617,11 +617,12 @@ function detectCitations(original) {
       }
     }
   }
-  const titleRefRe = new RegExp(`\\bit(-[12])?\\s+[""\u201C\u201D\xAB\xBB]?([A-Za-z][A-Za-z\\s'-]+?)[""\u201C\u201D\xAB\xBB]?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+)`, "g");
+  const titleRefRe = new RegExp(`\\bit(-[12])?\\s+[""\u201C\u201D\xAB\xBB]?([A-Za-z][A-Za-z\\s'-]+?)[""\u201C\u201D\xAB\xBB]?(\\s+No\\.\\s*\\d+)?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+(?:\\s*[-\u2013]\\s*\\d+)?)`, "g");
   while ((m = titleRefRe.exec(cleanText)) !== null) {
     const vol = m[1] || "-2";
     const title = m[2].trim();
-    const para = m[3];
+    const noPart = m[3] ? m[3].trim() : "";
+    const para = m[4];
     const cleanStart = m.index;
     const cleanEnd = m.index + m[0].length;
     const start = cleanToOrig[cleanStart];
@@ -630,9 +631,9 @@ function detectCitations(original) {
       skipped.push(`title ref ${m[0]} (overlapped another citation)`);
       continue;
     }
-    const query = `it${vol} "${title}" \xB6${para}`;
+    const query = noPart ? `it${vol} "${title}" ${noPart} \xB6${para}` : `it${vol} "${title}" \xB6${para}`;
     const url = buildWolUrl(query);
-    const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, "").trim();
+    const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, "").trim();
     items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
   }
   const ijwbvRe = /\bijwbv\s+(?:article\s+)?(\d+)/gi;
@@ -648,7 +649,7 @@ function detectCitations(original) {
     }
     const query = `ijwbv ${num}`;
     const url = buildWolUrl(query);
-    const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, "").trim() || `ijwbv ${num}`;
+    const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, "").trim() || `ijwbv ${num}`;
     items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
   }
   for (let k = items.length - 1; k >= 0; k--) {
@@ -1147,7 +1148,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       }
     });
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 21:23:26"}) loaded`);
+    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-15 14:04:39"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -1196,14 +1197,14 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-14 21:23:26"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-15 14:04:39"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-14 21:23:26"}`);
+    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-15 14:04:39"}`);
     const fetched = [];
     for (const item of items) {
       try {

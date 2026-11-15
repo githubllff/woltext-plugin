@@ -30,7 +30,7 @@ export function detectCitations(original: string): DetectionResult {
     const cleanChars: string[] = [];
     const cleanToOrig: number[] = [];
     const pushChar = (idx: number) => {
-        if (original[idx] === '_') return;
+        if (original[idx] === '_' || original[idx] === '*') return;
         cleanChars.push(original[idx]);
         cleanToOrig.push(idx);
     };
@@ -96,7 +96,7 @@ export function detectCitations(original: string): DetectionResult {
                 searchFrom = idx + rawVt.trim().length;
                 continue;
             }
-            const fullRef = `${book} ${token}`.replace(/_/g, '');
+            const fullRef = `${book} ${token}`.replace(/[_*]/g, '');
             const query = fullRef.replace(/,\s+/g, ',');
             const url = `https://wol.jw.org/en/wol/l/r1/lp-e?q=${encodeURIComponent(query)}`;
             items.push({ cit: { text: fullRef, start: origStart, end: origEnd }, query, url, isPub: false });
@@ -114,10 +114,10 @@ export function detectCitations(original: string): DetectionResult {
                 skipped.push(`publication ${cit.text} (overlapped a scripture match)`);
                 continue;
             }
-            const cleanCit = { ...cit, text: cit.text.replace(/_/g, '') } as Citation;
+            const cleanCit = { ...cit, text: cit.text.replace(/[_*]/g, '') } as Citation;
             const { query, fullRef } = buildPubQuery(cleanText, cleanCit);
             const url = buildWolUrl(query);
-            const cleanFullRef = fullRef.replace(/_/g, '');
+            const cleanFullRef = fullRef.replace(/[_*]/g, '');
             // fullRef lives in clean-text coordinates; map its end back to the original.
             const cleanFullEnd = Math.min(cit.start + fullRef.length, cleanText.length);
             const origFullEnd = cleanFullEnd > 0 ? cleanToOrig[cleanFullEnd - 1] + 1 : origEnd;
@@ -148,7 +148,7 @@ export function detectCitations(original: string): DetectionResult {
                 if (!items.some(it => origShStart < it.cit.end && origShEnd > it.cit.start)) {
                     const q = paraEnd ? `${root} ${page} ${para}-${paraEnd}` : `${root} ${page} ${para}`;
                     const u = buildWolUrl(q);
-                    const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).trim()}`.replace(/_/g, '').trim();
+                    const display = `${root} ${cleanText.slice(trimmedStart, trimmedEnd).trim()}`.replace(/[_*]/g, '').trim();
                     items.push({ cit: { text: display, start: origShStart, end: origShEnd }, query: q, url: u, isPub: true });
                 } else {
                     skipped.push(`shorthand ${fullMatch.trim()} (overlapped another citation)`);
@@ -160,11 +160,12 @@ export function detectCitations(original: string): DetectionResult {
     }
 
     // 3. Insight title references (e.g. it "Peace" ¶3) and Meeting Workbook articles (e.g. ijwbv article 50)
-    const titleRefRe = new RegExp('\\bit(-[12])?\\s+[""\u201C\u201D«»]?([A-Za-z][A-Za-z\\s\'-]+?)[""\u201C\u201D«»]?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+)', 'g');
+    const titleRefRe = new RegExp('\\bit(-[12])?\\s+[""\u201C\u201D«»]?([A-Za-z][A-Za-z\\s\'-]+?)[""\u201C\u201D«»]?(\\s+No\\.\\s*\\d+)?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+(?:\\s*[-\u2013]\\s*\\d+)?)', 'g');
     while ((m = titleRefRe.exec(cleanText)) !== null) {
         const vol = m[1] || '-2';
         const title = m[2].trim();
-        const para = m[3];
+        const noPart = m[3] ? m[3].trim() : '';
+        const para = m[4];
         const cleanStart = m.index;
         const cleanEnd = m.index + m[0].length;
         // Map back to ORIGINAL text offsets (other citations use those).
@@ -174,9 +175,11 @@ export function detectCitations(original: string): DetectionResult {
             skipped.push(`title ref ${m[0]} (overlapped another citation)`);
             continue;
         }
-        const query = `it${vol} "${title}" \u00B6${para}`;
+        const query = noPart
+            ? `it${vol} "${title}" ${noPart} \u00B6${para}`
+            : `it${vol} "${title}" \u00B6${para}`;
         const url = buildWolUrl(query);
-        const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, '').trim();
+        const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, '').trim();
         items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
     }
     // Meeting Workbook article references
@@ -193,7 +196,7 @@ export function detectCitations(original: string): DetectionResult {
         }
         const query = `ijwbv ${num}`;
         const url = buildWolUrl(query);
-        const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/_/g, '').trim() || `ijwbv ${num}`;
+        const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, '').trim() || `ijwbv ${num}`;
         items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
     }
 

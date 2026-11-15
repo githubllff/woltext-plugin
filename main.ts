@@ -27,7 +27,12 @@ export default class WolTextPlugin extends Plugin {
     settings: WolTextSettings = DEFAULT_SETTINGS;
 
     async onload() {
-        await this.loadSettings();
+        try {
+            await this.loadSettings();
+        } catch (e) {
+            console.error('WOL Text Inserter: loadSettings failed', e);
+            this.settings = Object.assign({}, DEFAULT_SETTINGS);
+        }
         try {
             await initEngine(this.app, 'en');
         } catch (e) {
@@ -37,7 +42,7 @@ export default class WolTextPlugin extends Plugin {
         this.addCommand({
             id: 'insert-wol-text',
             name: 'Insert WOL text for citations in note',
-            editorCallback: async (_editor, _view) => {
+            callback: async () => {
                 await this.processActiveNote();
             },
         });

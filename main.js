@@ -1131,7 +1131,12 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     this.settings = DEFAULT_SETTINGS;
   }
   async onload() {
-    await this.loadSettings();
+    try {
+      await this.loadSettings();
+    } catch (e) {
+      console.error("WOL Text Inserter: loadSettings failed", e);
+      this.settings = Object.assign({}, DEFAULT_SETTINGS);
+    }
     try {
       await initEngine(this.app, "en");
     } catch (e) {
@@ -1141,7 +1146,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     this.addCommand({
       id: "insert-wol-text",
       name: "Insert WOL text for citations in note",
-      editorCallback: async (_editor, _view) => {
+      callback: async () => {
         await this.processActiveNote();
       }
     });
@@ -1152,7 +1157,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       console.error("WOL Text Inserter: editor extension registration failed", e);
     }
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-15 14:39:52"}) loaded`);
+    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-15 14:42:16"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -1201,14 +1206,14 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-15 14:39:52"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-15 14:42:16"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-15 14:39:52"}`);
+    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-15 14:42:16"}`);
     const fetched = [];
     for (const item of items) {
       try {

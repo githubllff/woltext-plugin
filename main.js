@@ -1171,7 +1171,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       console.error("WOL Text Inserter: editor extension registration failed", e);
     }
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-16 18:01:25"}) loaded`);
+    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-16 18:31:20"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -1220,14 +1220,14 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-16 18:01:25"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-16 18:31:20"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-16 18:01:25"}`);
+    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-16 18:31:20"}`);
     const fetched = [];
     for (const item of items) {
       try {
@@ -1249,7 +1249,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
           text = extractArticleTitles(html).join("\n");
         const paraCount = text ? text.split("\n").length : 0;
         diag.push(`${item.query}  =>  ${item.url}`);
-        diag.push(`    paragraphs=${paraCount} | ${(text || "(no text)").slice(0, 100).replace(/\n/g, " / ")}`);
+        diag.push(`    paragraphs=${paraCount} | textLen=${(text || "").length} | ${(text || "(no text)").slice(0, 100).replace(/\n/g, " / ")}`);
         fetched.push({ cit: item.cit, text: text || "(no text found)", url: item.url, isPub: item.isPub });
       } catch (e) {
         console.error("Fetch failed", item.url, e);
@@ -1323,10 +1323,10 @@ async function fetchPage(url) {
   let last = "";
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = await (0, import_obsidian.requestUrl)({ url });
+      const res = await (0, import_obsidian.requestUrl)({ url, headers: { "User-Agent": "Obsidian/1.9.14" } });
       const text = res.text || "";
       last = text;
-      const blocked = text.length < 4e3 || /awsWafCookieDomainList|ERROR: The request could not be satisfied|Request blocked/i.test(text);
+      const blocked = res.status && res.status !== 200 || text.length < 4e3 || /awsWafCookieDomainList|ERROR: The request could not be satisfied|Request blocked/i.test(text);
       if (!blocked)
         return text;
       console.warn(`WOL Text Inserter: suspicious response (attempt ${attempt + 1}) for ${url}`);

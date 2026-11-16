@@ -138,7 +138,7 @@ export default class WolTextPlugin extends Plugin {
                 if (!text) text = extractArticleTitles(html).join('\n');
                 const paraCount = text ? text.split('\n').length : 0;
                 diag.push(`${item.query}  =>  ${item.url}`);
-                diag.push(`    paragraphs=${paraCount} | ${(text || '(no text)').slice(0, 100).replace(/\n/g, ' / ')}`);
+                diag.push(`    paragraphs=${paraCount} | textLen=${(text||'').length} | ${(text || '(no text)').slice(0, 100).replace(/\n/g, ' / ')}`);
                 fetched.push({ cit: item.cit, text: text || '(no text found)', url: item.url, isPub: item.isPub });
             } catch (e) {
                 console.error('Fetch failed', item.url, e);
@@ -210,10 +210,10 @@ async function fetchPage(url: string): Promise<string> {
     let last = '';
     for (let attempt = 0; attempt < 3; attempt++) {
         try {
-            const res = await requestUrl({ url });
+            const res = await requestUrl({ url, headers: { 'User-Agent': 'Obsidian/1.9.14' } });
             const text = res.text || '';
             last = text;
-            const blocked = text.length < 4000
+            const blocked = (res.status && res.status !== 200) || text.length < 4000
                 || /awsWafCookieDomainList|ERROR: The request could not be satisfied|Request blocked/i.test(text);
             if (!blocked) return text;
             console.warn(`WOL Text Inserter: suspicious response (attempt ${attempt + 1}) for ${url}`);

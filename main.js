@@ -498,9 +498,22 @@ function detectCitations(original) {
   const cleanChars = [];
   const cleanToOrig = [];
   const pushChar = (idx) => {
-    if (original[idx] === "_" || original[idx] === "*")
+    const ch = original[idx];
+    if (ch === "_" || ch === "*")
       return;
-    cleanChars.push(original[idx]);
+    if (ch === "\u200B" || ch === "\u200C" || ch === "\u200D" || ch === "\uFEFF")
+      return;
+    if (ch === "\xA0") {
+      cleanChars.push(" ");
+      cleanToOrig.push(idx);
+      return;
+    }
+    if (ch === "\u2011") {
+      cleanChars.push("-");
+      cleanToOrig.push(idx);
+      return;
+    }
+    cleanChars.push(ch);
     cleanToOrig.push(idx);
   };
   let ci = 0;
@@ -1157,7 +1170,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       console.error("WOL Text Inserter: editor extension registration failed", e);
     }
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-15 14:42:16"}) loaded`);
+    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-16 17:45:28"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -1206,14 +1219,14 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-15 14:42:16"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-16 17:45:28"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-15 14:42:16"}`);
+    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-16 17:45:28"}`);
     const fetched = [];
     for (const item of items) {
       try {

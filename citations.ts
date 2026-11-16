@@ -30,8 +30,12 @@ export function detectCitations(original: string): DetectionResult {
     const cleanChars: string[] = [];
     const cleanToOrig: number[] = [];
     const pushChar = (idx: number) => {
-        if (original[idx] === '_' || original[idx] === '*') return;
-        cleanChars.push(original[idx]);
+        const ch = original[idx];
+        if (ch === '_' || ch === '*') return;
+        if (ch === '\u200B' || ch === '\u200C' || ch === '\u200D' || ch === '\uFEFF') return;
+        if (ch === '\u00A0') { cleanChars.push(' '); cleanToOrig.push(idx); return; }
+        if (ch === '\u2011') { cleanChars.push('-'); cleanToOrig.push(idx); return; }
+        cleanChars.push(ch);
         cleanToOrig.push(idx);
     };
     let ci = 0;

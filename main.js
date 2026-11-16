@@ -649,20 +649,21 @@ function detectCitations(original) {
     const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, "").trim();
     items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
   }
-  const ijwbvRe = /\bijwbv\s+(?:article\s+)?(\d+)/gi;
-  while ((m = ijwbvRe.exec(cleanText)) !== null) {
-    const num = m[1];
+  const ijwArticleRe = /\b(ijw[a-z]{2,4})\s+(?:article\s+)?(\d+)/gi;
+  while ((m = ijwArticleRe.exec(cleanText)) !== null) {
+    const pubCode = m[1];
+    const num = m[2];
     const cleanStart = m.index;
     const cleanEnd = m.index + m[0].length;
     const start = cleanToOrig[cleanStart];
     const end = cleanToOrig[cleanEnd - 1] + 1;
     if (items.some((it) => start < it.cit.end && end > it.cit.start)) {
-      skipped.push(`ijwbv ${num} (overlapped another citation)`);
+      skipped.push(`${pubCode} ${num} (overlapped another citation)`);
       continue;
     }
-    const query = `ijwbv ${num}`;
+    const query = `${pubCode} ${num}`;
     const url = buildWolUrl(query);
-    const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, "").trim() || `ijwbv ${num}`;
+    const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, "").trim() || `${pubCode} article ${num}`;
     items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
   }
   for (let k = items.length - 1; k >= 0; k--) {
@@ -1170,7 +1171,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       console.error("WOL Text Inserter: editor extension registration failed", e);
     }
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-16 17:45:28"}) loaded`);
+    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-16 18:01:25"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -1219,14 +1220,14 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-16 17:45:28"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-16 18:01:25"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-16 17:45:28"}`);
+    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-16 18:01:25"}`);
     const fetched = [];
     for (const item of items) {
       try {

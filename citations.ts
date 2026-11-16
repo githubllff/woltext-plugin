@@ -186,21 +186,22 @@ export function detectCitations(original: string): DetectionResult {
         const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, '').trim();
         items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
     }
-    // Meeting Workbook article references
-    const ijwbvRe = /\bijwbv\s+(?:article\s+)?(\d+)/gi;
-    while ((m = ijwbvRe.exec(cleanText)) !== null) {
-        const num = m[1];
+    // Meeting Workbook / index article references (e.g. ijwbv article 50, ijwia article 6)
+    const ijwArticleRe = /\b(ijw[a-z]{2,4})\s+(?:article\s+)?(\d+)/gi;
+    while ((m = ijwArticleRe.exec(cleanText)) !== null) {
+        const pubCode = m[1];
+        const num = m[2];
         const cleanStart = m.index;
         const cleanEnd = m.index + m[0].length;
         const start = cleanToOrig[cleanStart];
         const end = cleanToOrig[cleanEnd - 1] + 1;
         if (items.some(it => start < it.cit.end && end > it.cit.start)) {
-            skipped.push(`ijwbv ${num} (overlapped another citation)`);
+            skipped.push(`${pubCode} ${num} (overlapped another citation)`);
             continue;
         }
-        const query = `ijwbv ${num}`;
+        const query = `${pubCode} ${num}`;
         const url = buildWolUrl(query);
-        const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, '').trim() || `ijwbv ${num}`;
+        const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, '').trim() || `${pubCode} article ${num}`;
         items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
     }
 

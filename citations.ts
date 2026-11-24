@@ -123,6 +123,12 @@ export function detectCitations(original: string): DetectionResult {
                 skipped.push(`publication ${cit.text} (overlapped a scripture match)`);
                 continue;
             }
+            // Insight title refs (it ...) are handled separately in step 3;
+            // skip them here to avoid duplicate/wrong queries.
+            if (cit.parts && cit.parts.title) {
+                skipped.push(`publication ${cit.text} (insight title ref, handled separately)`);
+                continue;
+            }
             const cleanCit = { ...cit, text: cit.text.replace(/[_*]/g, '') } as Citation;
             const { query, fullRef } = buildPubQuery(cleanText, cleanCit);
             const url = buildWolUrl(query);
@@ -171,10 +177,14 @@ export function detectCitations(original: string): DetectionResult {
     // 3. Insight title references (e.g. it "Peace" ¶3) and Meeting Workbook articles (e.g. ijwbv article 50)
     const titleRefRe = new RegExp('\\bit(-[12])?\\s+[""\u201C\u201D«»]?([A-Za-z][A-Za-z\\s\'-]+?)[""\u201C\u201D«»]?(\\s+No\\.\\s*\\d+)?\\s*(?:[^\\w\\s]+|par\\.?|p\\.?)\\s*(\\d+(?:\\s*[-\u2013]\\s*\\d+)?)', 'g');
     while ((m = titleRefRe.exec(cleanText)) !== null) {
-        const vol = m[1] || '-2';
+        const vol = m[1] || null;
         const title = m[2].trim();
         const noPart = m[3] ? m[3].trim() : '';
         const para = m[4];
+        // Determine volume if not specified: A-I -> vol 1, J-Z -> vol 2
+        // Always determine from first letter of title (overrides user-specified volume)
+        const firstLetter = title.charAt(0).toUpperCase();
+        const resolvedVol = (firstLetter >= 'A' && firstLetter <= 'I') ? '-1' : '-2';
         const cleanStart = m.index;
         const cleanEnd = m.index + m[0].length;
         // Map back to ORIGINAL text offsets (other citations use those).
@@ -185,8 +195,8 @@ export function detectCitations(original: string): DetectionResult {
             continue;
         }
         const query = noPart
-            ? `it${vol} "${title}" ${noPart} \u00B6${para}`
-            : `it${vol} "${title}" \u00B6${para}`;
+            ? `it${resolvedVol} "${title}" ${noPart} \u00B6${para}`
+            : `it${resolvedVol} "${title}" \u00B6${para}`;
         const url = buildWolUrl(query);
         const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, '').trim();
         items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });

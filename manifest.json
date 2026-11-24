@@ -1,7 +1,7 @@
 {
   "id": "woltext-plugin",
   "name": "WOL Text Inserter",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "minAppVersion": "1.4.0",
   "description": "Find scripture and publication citations in a note, fetch their text from Watchtower ONLINE Library, and insert it under each citation.",
   "author": "erykjj",

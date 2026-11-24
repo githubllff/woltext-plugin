@@ -3,14 +3,19 @@
 // Shared citation detection. Used by both the "insert WOL text" command and
 // the live editor/reading-view linkifiers.
 
-import { Citation } from './types';
 import { findCitations, buildWolUrl } from './engine-wrapper';
+import { parseBibleRef, fetchStudyNote, fetchFootnote } from './bible';
 
 export interface DetectedItem {
     cit: { text: string; start: number; end: number };
     query: string;
     url: string;
     isPub: boolean;
+    type?: 'scripture' | 'publication' | 'studyNote' | 'footnote';
+    bookNum?: number;
+    chapter?: number;
+    verse?: number;
+    edition?: string;
 }
 
 export interface DetectionResult {
@@ -175,7 +180,7 @@ export function detectCitations(original: string): DetectionResult {
         // Map back to ORIGINAL text offsets (other citations use those).
         const start = cleanToOrig[cleanStart];
         const end = cleanToOrig[cleanEnd - 1] + 1;
-        if (items.some(it => start < it.cit.end && end > it.cit.start)) {
+            if (items.some(it => start < it.cit.end && end > it.cit.start)) {
             skipped.push(`title ref ${m[0]} (overlapped another citation)`);
             continue;
         }
@@ -195,7 +200,7 @@ export function detectCitations(original: string): DetectionResult {
         const cleanEnd = m.index + m[0].length;
         const start = cleanToOrig[cleanStart];
         const end = cleanToOrig[cleanEnd - 1] + 1;
-        if (items.some(it => start < it.cit.end && end > it.cit.start)) {
+            if (items.some(it => start < it.cit.end && end > it.cit.start)) {
             skipped.push(`${pubCode} ${num} (overlapped another citation)`);
             continue;
         }
@@ -203,6 +208,47 @@ export function detectCitations(original: string): DetectionResult {
         const url = buildWolUrl(query);
         const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, '').trim() || `${pubCode} article ${num}`;
         items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
+    }
+
+    // Study note references: "study note on Ga 1:21" or "study note on Ga 1:21, nwtsty"
+    const studyNoteRe = /study note on\s+([A-Za-z][A-Za-z0-9.\s]*?\d+:\d+)(?:\s*,\s*\*?([A-Za-z0-9]+)\*?)?/gi;
+    while ((m = studyNoteRe.exec(cleanText)) !== null) {
+        const verseText = m[1].trim();
+        const edition = (m[2] || 'nwtsty').toLowerCase();
+        const ref = parseBibleRef(verseText.replace(/\s+/g, ' ').trim());
+        if (!ref) continue;
+        const cleanStart = m.index;
+        const cleanEnd = m.index + m[0].length;
+        const start = cleanToOrig[cleanStart];
+        const end = cleanToOrig[cleanEnd - 1] + 1;
+            if (false && items.some(it => start < it.cit.end && end > it.cit.start && (it.type === 'studyNote' || it.type === 'footnote'))) {
+            skipped.push(`study note ${verseText} (overlapped another citation)`);
+            continue;
+        }
+        const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, '').trim();
+        const chapterUrl = `https://wol.jw.org/en/wol/b/r1/lp-e/${edition === 'nwt' ? 'nwt' : 'nwtsty'}/${ref.bookNum}/${ref.chapter}`;
+        const label = `${verseText} study note`;
+        items.push({ cit: { text: label, start, end }, query: `study note on ${verseText}`, url: chapterUrl, isPub: false, type: 'studyNote', bookNum: ref.bookNum, chapter: ref.chapter, verse: ref.verse, edition: edition === 'nwt' ? 'nwt' : 'nwtsty' });
+    }
+
+    // Footnote references: "Psalm 4:3 and footnote" or "Read Psalm 4:3 and footnote"
+    const footnoteRe = /([A-Za-z][A-Za-z0-9.\s]*?\d+:\d+)\s+and\s+footnote/gi;
+    while ((m = footnoteRe.exec(cleanText)) !== null) {
+        const verseText = m[1].trim().replace(/^Read\s+/i, '');
+        const ref = parseBibleRef(verseText.replace(/\s+/g, ' ').trim());
+        if (!ref) continue;
+        const cleanStart = m.index;
+        const cleanEnd = m.index + m[0].length;
+        const start = cleanToOrig[cleanStart];
+        const end = cleanToOrig[cleanEnd - 1] + 1;
+        if (false) {
+            skipped.push(`footnote ${verseText} (overlapped another citation)`);
+            continue;
+        }
+        const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, '').trim();
+        const chapterUrl = `https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/${ref.bookNum}/${ref.chapter}`;
+        const label = `${verseText} footnote`;
+        items.push({ cit: { text: label, start, end }, query: `${verseText} and footnote`, url: chapterUrl, isPub: false, type: 'footnote', bookNum: ref.bookNum, chapter: ref.chapter, verse: ref.verse, edition: 'nwtsty' });
     }
 
     // Drop anything that was detected inside an existing link's URL.

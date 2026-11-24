@@ -38,7 +38,7 @@ __export(main_exports, {
   default: () => WolTextPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian = require("obsidian");
+var import_obsidian2 = require("obsidian");
 
 // engine.js
 var engine_exports = {};
@@ -493,6 +493,338 @@ function buildWolUrl(query) {
   }
 }
 
+// bible.ts
+var import_obsidian = require("obsidian");
+var BOOK_MAP = {
+  // Old Testament
+  "genesis": 1,
+  "gen": 1,
+  "ge": 1,
+  "exodus": 2,
+  "ex": 2,
+  "exod": 2,
+  "leviticus": 3,
+  "lev": 3,
+  "le": 3,
+  "numbers": 4,
+  "num": 4,
+  "nu": 4,
+  "nm": 4,
+  "deuteronomy": 5,
+  "deut": 5,
+  "de": 5,
+  "dt": 5,
+  "joshua": 6,
+  "josh": 6,
+  "jos": 6,
+  "judges": 7,
+  "judg": 7,
+  "jg": 7,
+  "jgs": 7,
+  "ruth": 8,
+  "ru": 8,
+  "1 samuel": 9,
+  "1sa": 9,
+  "1 sam": 9,
+  "1sam": 9,
+  "2 samuel": 10,
+  "2sa": 10,
+  "2 sam": 10,
+  "2sam": 10,
+  "1 kings": 11,
+  "1ki": 11,
+  "1 kgs": 11,
+  "1kgs": 11,
+  "2 kings": 12,
+  "2ki": 12,
+  "2 kgs": 12,
+  "2kgs": 12,
+  "1 chronicles": 13,
+  "1ch": 13,
+  "1 chr": 13,
+  "1chr": 13,
+  "2 chronicles": 14,
+  "2ch": 14,
+  "2 chr": 14,
+  "2chr": 14,
+  "ezra": 15,
+  "ezr": 15,
+  "ez": 15,
+  "nehemiah": 16,
+  "neh": 16,
+  "ne": 16,
+  "esther": 17,
+  "esth": 17,
+  "est": 17,
+  "job": 18,
+  "jb": 18,
+  "psalms": 19,
+  "psalm": 19,
+  "ps": 19,
+  "psa": 19,
+  "proverbs": 20,
+  "prov": 20,
+  "pr": 20,
+  "pro": 20,
+  "ecclesiastes": 21,
+  "eccl": 21,
+  "ec": 21,
+  "ecc": 21,
+  "song of solomon": 22,
+  "song of songs": 22,
+  "song": 22,
+  "sos": 22,
+  "so": 22,
+  "ss": 22,
+  "isaiah": 23,
+  "isa": 23,
+  "is": 23,
+  "jeremiah": 24,
+  "jer": 24,
+  "je": 24,
+  "lamentations": 25,
+  "lam": 25,
+  "la": 25,
+  "ezekiel": 26,
+  "ezek": 26,
+  "eze": 26,
+  "ezk": 26,
+  "daniel": 27,
+  "dan": 27,
+  "da": 27,
+  "dn": 27,
+  "hosea": 28,
+  "hos": 28,
+  "ho": 28,
+  "joel": 29,
+  "jl": 29,
+  "joe": 29,
+  "amos": 30,
+  "am": 30,
+  "amo": 30,
+  "obadiah": 31,
+  "obad": 31,
+  "ob": 31,
+  "jonah": 32,
+  "jon": 32,
+  "jnh": 32,
+  "micah": 33,
+  "mic": 33,
+  "mi": 33,
+  "nahum": 34,
+  "nah": 34,
+  "na": 34,
+  "habakkuk": 35,
+  "hab": 35,
+  "hb": 35,
+  "zephaniah": 36,
+  "zeph": 36,
+  "zep": 36,
+  "zp": 36,
+  "haggai": 37,
+  "hag": 37,
+  "hg": 37,
+  "zechariah": 38,
+  "zech": 38,
+  "zc": 38,
+  "zec": 38,
+  "malachi": 39,
+  "mal": 39,
+  "ml": 39,
+  // New Testament
+  "matthew": 40,
+  "matt": 40,
+  "mt": 40,
+  "mark": 41,
+  "mk": 41,
+  "mr": 41,
+  "mar": 41,
+  "luke": 42,
+  "lk": 42,
+  "lu": 42,
+  "john": 43,
+  "jn": 43,
+  "joh": 43,
+  "jo": 43,
+  "acts": 44,
+  "ac": 44,
+  "act": 44,
+  "romans": 45,
+  "rom": 45,
+  "ro": 45,
+  "rm": 45,
+  "1 corinthians": 46,
+  "1co": 46,
+  "1 cor": 46,
+  "1cor": 46,
+  "2 corinthians": 47,
+  "2co": 47,
+  "2 cor": 47,
+  "2cor": 47,
+  "galatians": 48,
+  "gal": 48,
+  "ga": 48,
+  "ephesians": 49,
+  "eph": 49,
+  "ep": 49,
+  "philippians": 50,
+  "phil": 50,
+  "php": 50,
+  "pp": 50,
+  "colossians": 51,
+  "col": 51,
+  "co": 51,
+  "1 thessalonians": 52,
+  "1th": 52,
+  "1 thess": 52,
+  "1thess": 52,
+  "2 thessalonians": 53,
+  "2th": 53,
+  "2 thess": 53,
+  "2thess": 53,
+  "1 timothy": 54,
+  "1ti": 54,
+  "1 tim": 54,
+  "1tim": 54,
+  "2 timothy": 55,
+  "2ti": 55,
+  "2 tim": 55,
+  "2tim": 55,
+  "titus": 56,
+  "tit": 56,
+  "ti": 56,
+  "philemon": 57,
+  "phlm": 57,
+  "phm": 57,
+  "philem": 57,
+  "hebrews": 58,
+  "heb": 58,
+  "he": 58,
+  "james": 59,
+  "jas": 59,
+  "jm": 59,
+  "jam": 59,
+  "1 peter": 60,
+  "1pe": 60,
+  "1 pet": 60,
+  "1pet": 60,
+  "1 pt": 60,
+  "2 peter": 61,
+  "2pe": 61,
+  "2 pet": 61,
+  "2pet": 61,
+  "2 pt": 61,
+  "1 john": 62,
+  "1jn": 62,
+  "1 jo": 62,
+  "1jo": 62,
+  "1 jn": 62,
+  "2 john": 63,
+  "2jn": 63,
+  "2 jo": 63,
+  "2jo": 63,
+  "2 jn": 63,
+  "3 john": 64,
+  "3jn": 64,
+  "3 jo": 64,
+  "3jo": 64,
+  "3 jn": 64,
+  "jude": 65,
+  "jd": 65,
+  "jde": 65,
+  "revelation": 66,
+  "rev": 66,
+  "re": 66,
+  "rv": 66
+};
+function parseBibleRef(text) {
+  const trimmed = text.trim();
+  const bookNames = Object.keys(BOOK_MAP).sort((a, b) => b.length - a.length);
+  for (const name of bookNames) {
+    const re = new RegExp("^" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s+(\\d+):(\\d+)(?:-(\\d+))?$", "i");
+    const m = trimmed.match(re);
+    if (m) {
+      return {
+        bookNum: BOOK_MAP[name],
+        chapter: parseInt(m[1], 10),
+        verse: parseInt(m[2], 10),
+        verseEnd: m[3] ? parseInt(m[3], 10) : void 0
+      };
+    }
+  }
+  return null;
+}
+async function fetchStudyNote(bookNum, chapter, verse, edition = "nwtsty") {
+  const url = `https://wol.jw.org/en/wol/b/r1/lp-e/${edition}/${bookNum}/${chapter}`;
+  try {
+    const res = await (0, import_obsidian.requestUrl)({ url, headers: { "User-Agent": "Obsidian/1.9.14" } });
+    const html = res.text || "";
+    const studyNotes = [];
+    const snRe = /<li[^>]*class="[^"]*studyNote[^"]*"[^>]*>([\s\S]*?)<\/li>/g;
+    let m;
+    while ((m = snRe.exec(html)) !== null) {
+      const content = m[1];
+      const titleMatch = content.match(/<strong>([\s\S]*?)<\/strong>/);
+      const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+      const text = content.replace(/<p[^>]*>/g, "\n").replace(/<\/p>/g, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\u200B/g, "").replace(/\s+/g, " ").trim();
+      studyNotes.push({ title, text });
+    }
+    const verseTexts = {};
+    const vRe = /<span id="v(\d+-\d+-\d+-\d+)"[^>]*class="v"[^>]*>[\s\S]*?<\/a>\s*([\s\S]*?)<\/span>/g;
+    let vm;
+    while ((vm = vRe.exec(html)) !== null) {
+      const vKey = vm[1];
+      const vNum = parseInt(vKey.split("-")[2], 10);
+      const vText = vm[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      if (!isNaN(vNum))
+        verseTexts[vNum] = vText;
+    }
+    const rawVerseText = verseTexts[verse] || "";
+    const normalize = (s) => s.toLowerCase().replace(/[·ʹ''""]/g, "").replace(/\s+/g, " ").trim();
+    const verseText = normalize(rawVerseText.replace(/^\d+\s*/, "").replace(/\s*[+*]\s*$/, ""));
+    for (const sn of studyNotes) {
+      const titleNorm = normalize(sn.title.replace(/:$/, ""));
+      if (titleNorm && verseText.includes(titleNorm)) {
+        return sn.text;
+      }
+    }
+    if (studyNotes.length > 0) {
+      return studyNotes[0].text;
+    }
+    return "";
+  } catch (e) {
+    console.error("fetchStudyNote error:", e);
+    return "";
+  }
+}
+async function fetchFootnote(bookNum, chapter, verse, edition = "nwtsty") {
+  const url = `https://wol.jw.org/en/wol/b/r1/lp-e/${edition}/${bookNum}/${chapter}`;
+  try {
+    const res = await (0, import_obsidian.requestUrl)({ url, headers: { "User-Agent": "Obsidian/1.9.14" } });
+    const html = res.text || "";
+    const sectionKey = 'data-key="' + bookNum + "-" + chapter + "-" + verse + '"';
+    const sectionPos = html.indexOf(sectionKey);
+    if (sectionPos === -1)
+      return "";
+    const ulStart = html.indexOf('<ul class="content">', sectionPos);
+    if (ulStart === -1)
+      return "";
+    const ulEnd = html.indexOf("</ul>", ulStart);
+    if (ulEnd === -1)
+      return "";
+    const ulContent = html.substring(ulStart, ulEnd + 5);
+    const fnLiRe = /<li[^>]*class="[^"]*footnote[^"]*"[^>]*>([\s\S]*?)<\/li>/;
+    const fnMatch = fnLiRe.exec(ulContent);
+    if (!fnMatch)
+      return "";
+    const fnText = fnMatch[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    return fnText.replace(/^\*\s*/, "").replace(/^[a-z]\s*/, "").trim();
+  } catch (e) {
+    console.error("fetchFootnote error:", e);
+    return "";
+  }
+}
+
 // citations.ts
 function detectCitations(original) {
   const cleanChars = [];
@@ -665,6 +997,45 @@ function detectCitations(original) {
     const url = buildWolUrl(query);
     const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, "").trim() || `${pubCode} article ${num}`;
     items.push({ cit: { text: fullRef, start, end }, query, url, isPub: true });
+  }
+  const studyNoteRe = /study note on\s+([A-Za-z][A-Za-z0-9.\s]*?\d+:\d+)(?:\s*,\s*\*?([A-Za-z0-9]+)\*?)?/gi;
+  while ((m = studyNoteRe.exec(cleanText)) !== null) {
+    const verseText = m[1].trim();
+    const edition = (m[2] || "nwtsty").toLowerCase();
+    const ref = parseBibleRef(verseText.replace(/\s+/g, " ").trim());
+    if (!ref)
+      continue;
+    const cleanStart = m.index;
+    const cleanEnd = m.index + m[0].length;
+    const start = cleanToOrig[cleanStart];
+    const end = cleanToOrig[cleanEnd - 1] + 1;
+    if (false) {
+      skipped.push(`study note ${verseText} (overlapped another citation)`);
+      continue;
+    }
+    const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, "").trim();
+    const chapterUrl = `https://wol.jw.org/en/wol/b/r1/lp-e/${edition === "nwt" ? "nwt" : "nwtsty"}/${ref.bookNum}/${ref.chapter}`;
+    const label = `${verseText} study note`;
+    items.push({ cit: { text: label, start, end }, query: `study note on ${verseText}`, url: chapterUrl, isPub: false, type: "studyNote", bookNum: ref.bookNum, chapter: ref.chapter, verse: ref.verse, edition: edition === "nwt" ? "nwt" : "nwtsty" });
+  }
+  const footnoteRe = /([A-Za-z][A-Za-z0-9.\s]*?\d+:\d+)\s+and\s+footnote/gi;
+  while ((m = footnoteRe.exec(cleanText)) !== null) {
+    const verseText = m[1].trim().replace(/^Read\s+/i, "");
+    const ref = parseBibleRef(verseText.replace(/\s+/g, " ").trim());
+    if (!ref)
+      continue;
+    const cleanStart = m.index;
+    const cleanEnd = m.index + m[0].length;
+    const start = cleanToOrig[cleanStart];
+    const end = cleanToOrig[cleanEnd - 1] + 1;
+    if (false) {
+      skipped.push(`footnote ${verseText} (overlapped another citation)`);
+      continue;
+    }
+    const fullRef = cleanText.slice(cleanStart, cleanEnd).replace(/[_*]/g, "").trim();
+    const chapterUrl = `https://wol.jw.org/en/wol/b/r1/lp-e/nwtsty/${ref.bookNum}/${ref.chapter}`;
+    const label = `${verseText} footnote`;
+    items.push({ cit: { text: label, start, end }, query: `${verseText} and footnote`, url: chapterUrl, isPub: false, type: "footnote", bookNum: ref.bookNum, chapter: ref.chapter, verse: ref.verse, edition: "nwtsty" });
   }
   for (let k = items.length - 1; k >= 0; k--) {
     const it = items[k];
@@ -1139,7 +1510,7 @@ var DEFAULT_SETTINGS = {
   outputFormat: "blockquote",
   linkPublications: true
 };
-var WolTextPlugin = class extends import_obsidian.Plugin {
+var WolTextPlugin = class extends import_obsidian2.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -1171,7 +1542,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
       console.error("WOL Text Inserter: editor extension registration failed", e);
     }
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-16 18:31:20"}) loaded`);
+    new import_obsidian2.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 20:50:14"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -1190,7 +1561,7 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     this.app.workspace.iterateAllLeaves((leaf) => {
       var _a;
       const view = leaf.view;
-      if (!(view instanceof import_obsidian.MarkdownView))
+      if (!(view instanceof import_obsidian2.MarkdownView))
         return;
       const cmView = view.editor.cm;
       if (cmView == null ? void 0 : cmView.dispatch)
@@ -1203,33 +1574,61 @@ var WolTextPlugin = class extends import_obsidian.Plugin {
     await this.saveData(this.settings);
   }
   async processActiveNote() {
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian2.MarkdownView);
     if (!view) {
-      new import_obsidian.Notice("Open a Markdown note first.");
+      new import_obsidian2.Notice("Open a Markdown note first.");
       return;
     }
     const editor = view.editor;
     const original = editor.getValue();
     if (!original.trim()) {
-      new import_obsidian.Notice("Note is empty.");
+      new import_obsidian2.Notice("Note is empty.");
       return;
     }
     const { items, skipped } = detectCitations(original);
     if (items.length === 0) {
-      new import_obsidian.Notice("No citations found.");
+      new import_obsidian2.Notice("No citations found.");
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-16 18:31:20"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 20:50:14"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian.Notice(`Found ${items.length} citation(s). Build ${"2026-11-16 18:31:20"}`);
+    new import_obsidian2.Notice(`Found ${items.length} citation(s). Build ${"2026-11-24 20:50:14"}`);
     const fetched = [];
     for (const item of items) {
+      if (item.type === "studyNote") {
+        try {
+          const text = await fetchStudyNote(item.bookNum, item.chapter, item.verse, item.edition || "nwtsty");
+          const paraCount = text ? text.split("\n").length : 0;
+          diag.push(`${item.query}  =>  study note`);
+          diag.push(`    paragraphs=${paraCount} | textLen=${(text || "").length} | ${(text || "(no text)").slice(0, 100).replace(/\n/g, " / ")}`);
+          fetched.push({ cit: item.cit, text: text || "(no text found)", url: "", isPub: false });
+        } catch (e) {
+          console.error("Study note fetch failed", item.query, e);
+          diag.push(`${item.query}  =>  study note FETCH ERROR: ${String(e)}`);
+          fetched.push({ cit: item.cit, text: "(fetch error)", url: "", isPub: false });
+        }
+        continue;
+      }
+      if (item.type === "footnote") {
+        try {
+          const text = await fetchFootnote(item.bookNum, item.chapter, item.verse, item.edition || "nwtsty");
+          const paraCount = text ? text.split("\n").length : 0;
+          diag.push(`${item.query}  =>  footnote`);
+          diag.push(`    paragraphs=${paraCount} | textLen=${(text || "").length} | ${(text || "(no text)").slice(0, 100).replace(/\n/g, " / ")}`);
+          fetched.push({ cit: item.cit, text: text || "(no text found)", url: "", isPub: false });
+        } catch (e) {
+          console.error("Footnote fetch failed", item.query, e);
+          diag.push(`${item.query}  =>  footnote FETCH ERROR: ${String(e)}`);
+          fetched.push({ cit: item.cit, text: "(fetch error)", url: "", isPub: false });
+        }
+        continue;
+      }
       try {
         const html = await fetchPage(item.url);
         let text = extractText(html);
@@ -1316,14 +1715,14 @@ ${bodyLines.join("\n")}`);
       }
     }
     editor.setValue(out.join("\n"));
-    new import_obsidian.Notice("Done. Review and save.");
+    new import_obsidian2.Notice("Done. Review and save.");
   }
 };
 async function fetchPage(url) {
   let last = "";
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = await (0, import_obsidian.requestUrl)({ url, headers: { "User-Agent": "Obsidian/1.9.14" } });
+      const res = await (0, import_obsidian2.requestUrl)({ url, headers: { "User-Agent": "Obsidian/1.9.14" } });
       const text = res.text || "";
       last = text;
       const blocked = res.status && res.status !== 200 || text.length < 4e3 || /awsWafCookieDomainList|ERROR: The request could not be satisfied|Request blocked/i.test(text);
@@ -1406,7 +1805,7 @@ function extractText(html) {
   const docParas = extractParagraphs(html, /\b(sl|sz|sb)\b/);
   return docParas.join("\n");
 }
-var WolTextSettingTab = class extends import_obsidian.PluginSettingTab {
+var WolTextSettingTab = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -1415,11 +1814,11 @@ var WolTextSettingTab = class extends import_obsidian.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "WOL Text Inserter" });
-    new import_obsidian.Setting(containerEl).setName("Output format").setDesc("How inserted references are formatted in the note.").addDropdown((drop) => drop.addOption("blockquote", "Blockquote (> )").addOption("indented", "Indented (tab)").addOption("callout", "Collapsible callout").setValue(this.plugin.settings.outputFormat).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("Output format").setDesc("How inserted references are formatted in the note.").addDropdown((drop) => drop.addOption("blockquote", "Blockquote (> )").addOption("indented", "Indented (tab)").addOption("callout", "Collapsible callout").setValue(this.plugin.settings.outputFormat).onChange(async (value) => {
       this.plugin.settings.outputFormat = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian.Setting(containerEl).setName("Clickable publication links").setDesc("Show publication citations as clickable WOL search links in the editor and reading view. Scriptures are left unchanged. The insert command only adds the reference text.").addToggle((toggle) => toggle.setValue(this.plugin.settings.linkPublications).onChange(async (value) => {
+    new import_obsidian2.Setting(containerEl).setName("Clickable publication links").setDesc("Show publication citations as clickable WOL search links in the editor and reading view. Scriptures are left unchanged. The insert command only adds the reference text.").addToggle((toggle) => toggle.setValue(this.plugin.settings.linkPublications).onChange(async (value) => {
       this.plugin.settings.linkPublications = value;
       setLivePublicationLinks(value);
       await this.plugin.saveSettings();

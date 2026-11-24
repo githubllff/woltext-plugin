@@ -1,6 +1,7 @@
 ﻿import { Plugin, MarkdownView, requestUrl, Notice, PluginSettingTab, Setting, App } from 'obsidian';
 import { initEngine, isEngineReady, resetEngine } from './engine-wrapper';
 import { detectCitations, DetectedItem } from './citations';
+import { fetchStudyNote, fetchFootnote } from './bible';
 import { createWolTextEditorPlugin, requestWolTextFullRescan, setLivePublicationLinks } from './editor';
 import { processReadingView } from './post-processor';
 
@@ -118,6 +119,34 @@ export default class WolTextPlugin extends Plugin {
 
         const fetched: Fetched[] = [];
         for (const item of items) {
+            if (item.type === 'studyNote') {
+                try {
+                    const text = await fetchStudyNote(item.bookNum!, item.chapter!, item.verse!, item.edition || 'nwtsty');
+                    const paraCount = text ? text.split('\n').length : 0;
+                    diag.push(`${item.query}  =>  study note`);
+                    diag.push(`    paragraphs=${paraCount} | textLen=${(text||'').length} | ${(text || '(no text)').slice(0, 100).replace(/\n/g, ' / ')}`);
+                    fetched.push({ cit: item.cit, text: text || '(no text found)', url: '', isPub: false });
+                } catch (e) {
+                    console.error('Study note fetch failed', item.query, e);
+                    diag.push(`${item.query}  =>  study note FETCH ERROR: ${String(e)}`);
+                    fetched.push({ cit: item.cit, text: '(fetch error)', url: '', isPub: false });
+                }
+                continue;
+            }
+            if (item.type === 'footnote') {
+                try {
+                    const text = await fetchFootnote(item.bookNum!, item.chapter!, item.verse!, item.edition || 'nwtsty');
+                    const paraCount = text ? text.split('\n').length : 0;
+                    diag.push(`${item.query}  =>  footnote`);
+                    diag.push(`    paragraphs=${paraCount} | textLen=${(text||'').length} | ${(text || '(no text)').slice(0, 100).replace(/\n/g, ' / ')}`);
+                    fetched.push({ cit: item.cit, text: text || '(no text found)', url: '', isPub: false });
+                } catch (e) {
+                    console.error('Footnote fetch failed', item.query, e);
+                    diag.push(`${item.query}  =>  footnote FETCH ERROR: ${String(e)}`);
+                    fetched.push({ cit: item.cit, text: '(fetch error)', url: '', isPub: false });
+                }
+                continue;
+            }
             try {
                 const html = await fetchPage(item.url);
                 let text = extractText(html);

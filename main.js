@@ -1579,7 +1579,7 @@ var WolTextPlugin = class extends import_obsidian2.Plugin {
       console.error("WOL Text Inserter: editor extension registration failed", e);
     }
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian2.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 21:07:40"}) loaded`);
+    new import_obsidian2.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 21:29:45"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -1628,14 +1628,14 @@ var WolTextPlugin = class extends import_obsidian2.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 21:07:40"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 21:29:45"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian2.Notice(`Found ${items.length} citation(s). Build ${"2026-11-24 21:07:40"}`);
+    new import_obsidian2.Notice(`Found ${items.length} citation(s). Build ${"2026-11-24 21:29:45"}`);
     const fetched = [];
     for (const item of items) {
       if (item.type === "studyNote") {
@@ -1738,7 +1738,7 @@ var WolTextPlugin = class extends import_obsidian2.Plugin {
             for (let k = 1; k < lines2.length; k++)
               bodyLines.push(`> ${lines2[k]}`);
           }
-          out.push(`> [!quote]+ References
+          out.push(`> [!quote]- References
 ${bodyLines.join("\n")}`);
         } else {
           const blocks = [];

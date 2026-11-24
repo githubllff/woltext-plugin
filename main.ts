@@ -217,7 +217,7 @@ export default class WolTextPlugin extends Plugin {
                         bodyLines.push(`> **${g.cit.text}:** ${lines2[0]}`);
                         for (let k = 1; k < lines2.length; k++) bodyLines.push(`> ${lines2[k]}`);
                     }
-                    out.push(`> [!quote]+ References\n${bodyLines.join('\n')}`);
+                    out.push(`> [!quote]- References\n${bodyLines.join('\n')}`);
                 } else {
                     const blocks: string[] = [];
                     for (const g of group) {

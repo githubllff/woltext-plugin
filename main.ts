@@ -10,11 +10,13 @@ declare const __BUILD_TIME__: string;
 interface WolTextSettings {
     outputFormat: 'blockquote' | 'indented' | 'callout';
     linkPublications: boolean;
+    calloutCollapsed: boolean;
 }
 
 const DEFAULT_SETTINGS: WolTextSettings = {
     outputFormat: 'blockquote',
     linkPublications: true,
+    calloutCollapsed: true,
 };
 
 interface Fetched {
@@ -217,7 +219,8 @@ export default class WolTextPlugin extends Plugin {
                         bodyLines.push(`> **${g.cit.text}:** ${lines2[0]}`);
                         for (let k = 1; k < lines2.length; k++) bodyLines.push(`> ${lines2[k]}`);
                     }
-                    out.push(`> [!quote]- References\n${bodyLines.join('\n')}`);
+                    const fold = this.settings.calloutCollapsed ? '-' : '+';
+out.push(`> [!quote]${fold} References\n${bodyLines.join('\n')}`);
                 } else {
                     const blocks: string[] = [];
                     for (const g of group) {
@@ -372,6 +375,15 @@ class WolTextSettingTab extends PluginSettingTab {
                     setLivePublicationLinks(value);
                     await this.plugin.saveSettings();
                     this.plugin.refreshEditorDecorations();
+                }));
+        new Setting(containerEl)
+            .setName('Collapse callouts by default')
+            .setDesc('When output format is "Collapsible callout", inserted reference callouts start collapsed (title bar only).')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.calloutCollapsed)
+                .onChange(async (value) => {
+                    this.plugin.settings.calloutCollapsed = value;
+                    await this.plugin.saveSettings();
                 }));
     }
 }

@@ -1545,7 +1545,8 @@ function processBlockElement(block) {
 // main.ts
 var DEFAULT_SETTINGS = {
   outputFormat: "blockquote",
-  linkPublications: true
+  linkPublications: true,
+  calloutCollapsed: true
 };
 var WolTextPlugin = class extends import_obsidian2.Plugin {
   constructor() {
@@ -1579,7 +1580,7 @@ var WolTextPlugin = class extends import_obsidian2.Plugin {
       console.error("WOL Text Inserter: editor extension registration failed", e);
     }
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian2.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 21:29:45"}) loaded`);
+    new import_obsidian2.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 21:31:21"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -1628,14 +1629,14 @@ var WolTextPlugin = class extends import_obsidian2.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 21:29:45"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 21:31:21"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian2.Notice(`Found ${items.length} citation(s). Build ${"2026-11-24 21:29:45"}`);
+    new import_obsidian2.Notice(`Found ${items.length} citation(s). Build ${"2026-11-24 21:31:21"}`);
     const fetched = [];
     for (const item of items) {
       if (item.type === "studyNote") {
@@ -1738,7 +1739,8 @@ var WolTextPlugin = class extends import_obsidian2.Plugin {
             for (let k = 1; k < lines2.length; k++)
               bodyLines.push(`> ${lines2[k]}`);
           }
-          out.push(`> [!quote]- References
+          const fold = this.settings.calloutCollapsed ? "-" : "+";
+          out.push(`> [!quote]${fold} References
 ${bodyLines.join("\n")}`);
         } else {
           const blocks = [];
@@ -1860,6 +1862,10 @@ var WolTextSettingTab = class extends import_obsidian2.PluginSettingTab {
       setLivePublicationLinks(value);
       await this.plugin.saveSettings();
       this.plugin.refreshEditorDecorations();
+    }));
+    new import_obsidian2.Setting(containerEl).setName("Collapse callouts by default").setDesc('When output format is "Collapsible callout", inserted reference callouts start collapsed (title bar only).').addToggle((toggle) => toggle.setValue(this.plugin.settings.calloutCollapsed).onChange(async (value) => {
+      this.plugin.settings.calloutCollapsed = value;
+      await this.plugin.saveSettings();
     }));
   }
 };

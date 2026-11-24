@@ -108,7 +108,7 @@ export function detectCitations(original: string): DetectionResult {
             const fullRef = `${book} ${token}`.replace(/[_*]/g, '');
             const query = fullRef.replace(/,\s+/g, ',');
             const url = `https://wol.jw.org/en/wol/l/r1/lp-e?q=${encodeURIComponent(query)}`;
-            items.push({ cit: { text: fullRef, start: origStart, end: origEnd }, query, url, isPub: false });
+            items.push({ cit: { text: fullRef, start: origStart, end: origEnd }, query, url, isPub: false, type: 'scripture' });
             searchFrom = idx + rawVt.trim().length;
         }
     }
@@ -256,6 +256,19 @@ export function detectCitations(original: string): DetectionResult {
         const it = items[k];
         if (linkUrlRanges.some(r => it.cit.start < r.end && it.cit.end > r.start)) {
             skipped.push(`${it.cit.text} (inside an existing link URL)`);
+            items.splice(k, 1);
+        }
+    }
+
+    // Remove scripture items that are fully contained within a study note or footnote
+    // reference (e.g., "Ga 1:21" inside "study note on Ga 1:21"), since the
+    // study note/footnote output already includes the verse text.
+    for (let k = items.length - 1; k >= 0; k--) {
+        const it = items[k];
+        if (it.type !== 'scripture') continue;
+        if (items.some(other => (other.type === 'studyNote' || other.type === 'footnote') &&
+            other.cit.start <= it.cit.start && other.cit.end >= it.cit.end)) {
+            skipped.push(`${it.cit.text} (contained in study note/footnote)`);
             items.splice(k, 1);
         }
     }

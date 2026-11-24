@@ -174,14 +174,17 @@ export async function fetchStudyNote(bookNum: number, chapter: number, verse: nu
         for (const sn of studyNotes) {
             const titleNorm = normalize(sn.title.replace(/:$/, ''));
             if (titleNorm && verseText.includes(titleNorm)) {
+                const vText = verseTexts[verse] ? verseTexts[verse].replace(/^\d+\s*/, '').replace(/\s*[+*]\s*$/, '').trim() : '';
+                if (vText) return vText + '\n\n' + sn.text;
                 return sn.text;
             }
         }
         // Fallback: if no match, return the first study note (or empty)
         if (studyNotes.length > 0) {
-            // Try matching by index: study notes are roughly in verse order
-            // Return the study note whose title appears anywhere in the chapter text near the verse
-            return studyNotes[0].text; // fallback
+            const vText = verseTexts[verse] ? verseTexts[verse].replace(/^\d+\s*/, '').replace(/\s*[+*]\s*$/, '').trim() : '';
+            const snText = studyNotes[0].text;
+            if (vText) return vText + '\n\n' + snText;
+            return snText;
         }
         return '';
     } catch (e) {
@@ -231,7 +234,21 @@ export async function fetchFootnote(bookNum: number, chapter: number, verse: num
             .replace(/\s+/g, ' ')
             .trim();
         // Remove the marker (e.g., "*" or "a")
-        return fnText.replace(/^\*\s*/, '').replace(/^[a-z]\s*/, '').trim();
+        const cleanFn = fnText.replace(/^\*\s*/, '').replace(/^[a-z]\s*/, '').trim();
+        // Extract verse text from the page
+        const vRe2 = /<span id="v(\d+-\d+-\d+-\d+)"[^>]*class="v"[^>]*>[\s\S]*?<\/a>\s*([\s\S]*?)<\/span>/g;
+        let vm2;
+        const verseTexts2: Record<number, string> = {};
+        while ((vm2 = vRe2.exec(html)) !== null) {
+            const vNum = parseInt(vm2[1].split('-')[2], 10);
+            const vText = vm2[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\d+\s*/, '').replace(/\s*[+*]\s*$/, '').trim();
+            if (!isNaN(vNum) && vText.length > 3) {
+                if (!verseTexts2[vNum]) verseTexts2[vNum] = vText;
+            }
+        }
+        const vText = verseTexts2[verse] || '';
+        if (vText) return vText + '\n\n' + cleanFn;
+        return cleanFn;
     } catch (e) {
         console.error('fetchFootnote error:', e);
         return '';

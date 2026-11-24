@@ -785,11 +785,18 @@ async function fetchStudyNote(bookNum, chapter, verse, edition = "nwtsty") {
     for (const sn of studyNotes) {
       const titleNorm = normalize(sn.title.replace(/:$/, ""));
       if (titleNorm && verseText.includes(titleNorm)) {
+        const vText = verseTexts[verse] ? verseTexts[verse].replace(/^\d+\s*/, "").replace(/\s*[+*]\s*$/, "").trim() : "";
+        if (vText)
+          return vText + "\n\n" + sn.text;
         return sn.text;
       }
     }
     if (studyNotes.length > 0) {
-      return studyNotes[0].text;
+      const vText = verseTexts[verse] ? verseTexts[verse].replace(/^\d+\s*/, "").replace(/\s*[+*]\s*$/, "").trim() : "";
+      const snText = studyNotes[0].text;
+      if (vText)
+        return vText + "\n\n" + snText;
+      return snText;
     }
     return "";
   } catch (e) {
@@ -818,7 +825,22 @@ async function fetchFootnote(bookNum, chapter, verse, edition = "nwtsty") {
     if (!fnMatch)
       return "";
     const fnText = fnMatch[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    return fnText.replace(/^\*\s*/, "").replace(/^[a-z]\s*/, "").trim();
+    const cleanFn = fnText.replace(/^\*\s*/, "").replace(/^[a-z]\s*/, "").trim();
+    const vRe2 = /<span id="v(\d+-\d+-\d+-\d+)"[^>]*class="v"[^>]*>[\s\S]*?<\/a>\s*([\s\S]*?)<\/span>/g;
+    let vm2;
+    const verseTexts2 = {};
+    while ((vm2 = vRe2.exec(html)) !== null) {
+      const vNum = parseInt(vm2[1].split("-")[2], 10);
+      const vText2 = vm2[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().replace(/^\d+\s*/, "").replace(/\s*[+*]\s*$/, "").trim();
+      if (!isNaN(vNum) && vText2.length > 3) {
+        if (!verseTexts2[vNum])
+          verseTexts2[vNum] = vText2;
+      }
+    }
+    const vText = verseTexts2[verse] || "";
+    if (vText)
+      return vText + "\n\n" + cleanFn;
+    return cleanFn;
   } catch (e) {
     console.error("fetchFootnote error:", e);
     return "";
@@ -908,7 +930,7 @@ function detectCitations(original) {
       const fullRef = `${book} ${token}`.replace(/[_*]/g, "");
       const query = fullRef.replace(/,\s+/g, ",");
       const url = `https://wol.jw.org/en/wol/l/r1/lp-e?q=${encodeURIComponent(query)}`;
-      items.push({ cit: { text: fullRef, start: origStart, end: origEnd }, query, url, isPub: false });
+      items.push({ cit: { text: fullRef, start: origStart, end: origEnd }, query, url, isPub: false, type: "scripture" });
       searchFrom = idx + rawVt.trim().length;
     }
   }
@@ -1041,6 +1063,15 @@ function detectCitations(original) {
     const it = items[k];
     if (linkUrlRanges.some((r) => it.cit.start < r.end && it.cit.end > r.start)) {
       skipped.push(`${it.cit.text} (inside an existing link URL)`);
+      items.splice(k, 1);
+    }
+  }
+  for (let k = items.length - 1; k >= 0; k--) {
+    const it = items[k];
+    if (it.type !== "scripture")
+      continue;
+    if (items.some((other) => (other.type === "studyNote" || other.type === "footnote") && other.cit.start <= it.cit.start && other.cit.end >= it.cit.end)) {
+      skipped.push(`${it.cit.text} (contained in study note/footnote)`);
       items.splice(k, 1);
     }
   }
@@ -1542,7 +1573,7 @@ var WolTextPlugin = class extends import_obsidian2.Plugin {
       console.error("WOL Text Inserter: editor extension registration failed", e);
     }
     this.addSettingTab(new WolTextSettingTab(this.app, this));
-    new import_obsidian2.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 20:50:14"}) loaded`);
+    new import_obsidian2.Notice(`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 20:52:45"}) loaded`);
     if (!isEngineReady()) {
       console.warn("WOL Text Inserter: engine not ready");
     }
@@ -1591,14 +1622,14 @@ var WolTextPlugin = class extends import_obsidian2.Plugin {
       return;
     }
     items.sort((a, b) => a.cit.start - b.cit.start);
-    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 20:50:14"})`, `Citations found: ${items.length}`, ""];
+    const diag = [`WOL Text Inserter ${this.manifest.version} (build ${"2026-11-24 20:52:45"})`, `Citations found: ${items.length}`, ""];
     if (skipped.length > 0) {
       diag.push("Skipped (overlap guard):");
       for (const s of skipped)
         diag.push("  " + s);
       diag.push("");
     }
-    new import_obsidian2.Notice(`Found ${items.length} citation(s). Build ${"2026-11-24 20:50:14"}`);
+    new import_obsidian2.Notice(`Found ${items.length} citation(s). Build ${"2026-11-24 20:52:45"}`);
     const fetched = [];
     for (const item of items) {
       if (item.type === "studyNote") {
